@@ -1,0 +1,20 @@
+# default full RL run settings.
+defaults:
+  - _self_
+  - agent: td3_mlp
+  - env: hopper_full
+  - reward: env
+  - logging: wandb
+
+experiment:
+  name: td3_mlp_hopper_full
+
+seed: 42
+total_steps: 1000000
+eval_interval: 10000
+eval_episodes: 10
+checkpoint_interval: 50000
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}_${experiment.name}

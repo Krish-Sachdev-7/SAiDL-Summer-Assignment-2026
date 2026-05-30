@@ -1,0 +1,7 @@
+# leave these empty unless grouping runs manually.
+wandb:
+  enable: true
+  project: saidl-core-ml
+  entity: null
+  group: null
+  tags: []

@@ -1,0 +1,4 @@
+# swap a few attention layers for cheaper depthwise convs.
+type: depthwise
+kernel_size: 7
+replace_layers: [0, 2, 4]

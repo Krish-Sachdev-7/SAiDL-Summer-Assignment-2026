@@ -1,0 +1,17 @@
+defaults:
+  - _self_
+  - model: base
+  - pos_encoding: absolute
+  - conv: none
+  - data: wikitext2
+  - trainer: base
+  - logging: wandb
+
+experiment:
+  name: baseline
+
+seed: 42
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}_${experiment.name}

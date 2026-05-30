@@ -1,0 +1,4 @@
+# add Gaussian observation noise.
+name: Hopper-v5
+wrapper: noisy
+noise_sigma: 0.1

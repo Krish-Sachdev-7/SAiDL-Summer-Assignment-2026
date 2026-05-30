@@ -1,0 +1,14 @@
+# local attention over a fixed recent window.
+vocab_size: 50257
+d_model: 384
+n_heads: 6
+n_layers: 6
+dropout: 0.1
+ff_multiplier: 4
+max_seq_len: 4096
+
+attention:
+  type: sliding_window
+  window_size: 256
+  block_size: 64
+  num_kv_heads: 2

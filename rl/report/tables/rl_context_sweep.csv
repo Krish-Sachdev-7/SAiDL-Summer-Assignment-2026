@@ -1,0 +1,5 @@
+Context L,Final return,Best return,Best step,Best-final gap,Hardware,Runtime (h)
+4,3509.9,3596.1,680000,86.2,Tesla P100-PCIE-16GB,5.04
+8,1778.8,3377.4,780000,1598.6,Tesla P100-PCIE-16GB,5.68
+16,3459.6,3459.6,1000000,0.0,Tesla P100-PCIE-16GB,6.10
+32,3035.7,3353.2,820000,317.6,Tesla T4 x2,11.66

@@ -1,0 +1,5 @@
+# scale positions when evaluating longer contexts.
+type: rope
+interpolation:
+  enabled: true
+  scale_factor: 1.0

@@ -1,0 +1,3 @@
+# gated conv FFN for local mixing inside the MLP path.
+type: gated_ffn
+kernel_size: 5

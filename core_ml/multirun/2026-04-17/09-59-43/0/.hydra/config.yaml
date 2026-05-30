@@ -1,0 +1,49 @@
+experiment:
+  name: baseline
+seed: 42
+model:
+  vocab_size: 50257
+  d_model: 384
+  n_heads: 6
+  n_layers: 6
+  dropout: 0.1
+  ff_multiplier: 4
+  max_seq_len: 4096
+  attention:
+    type: full
+    window_size: 256
+    block_size: 64
+    num_kv_heads: 2
+pos_encoding:
+  type: absolute
+conv:
+  type: none
+  kernel_size: 3
+data:
+  dataset_name: wikitext
+  dataset_config: wikitext-2-raw-v1
+  context_length: 512
+  eval_context_lengths:
+  - 512
+  - 1024
+  - 2048
+  train_token_limit: 1200000
+  val_token_limit: 300000
+trainer:
+  batch_size: 8
+  learning_rate: 0.0003
+  weight_decay: 0.01
+  max_steps: 300
+  warmup_steps: 100
+  eval_interval: 100
+  eval_batches: 40
+  grad_clip: 1.0
+  num_workers: 2
+  use_amp: true
+logging:
+  wandb:
+    enable: true
+    project: saidl-core-ml
+    entity: null
+    group: null
+    tags: []

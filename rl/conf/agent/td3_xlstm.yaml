@@ -1,0 +1,21 @@
+# bonus xLSTM actor.
+type: xlstm
+actor:
+  embed_dim: 128
+  context_length: 8
+  n_slstm_layers: 1
+  n_mlstm_layers: 1
+  obs_norm: true
+critic:
+  hidden_dims: [256, 256]
+
+lr: 3e-4
+buffer_size: 1000000
+batch_size: 256
+tau: 0.005
+policy_delay: 2
+exploration_noise: 0.1
+target_noise: 0.2
+noise_clip: 0.5
+gamma: 0.99
+start_steps: 25000

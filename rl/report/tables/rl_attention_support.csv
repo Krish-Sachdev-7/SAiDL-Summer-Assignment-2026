@@ -1,0 +1,3 @@
+Run,Observation setting,Final return,Best return,Best step,Hardware
+p3 attn full s42,Full,3321.9,3442.7,920000,Tesla T4 x2
+p3 attn hidden s42,Hidden velocity,293.6,745.3,340000,Tesla T4 x2

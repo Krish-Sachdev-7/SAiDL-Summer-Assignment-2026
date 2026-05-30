@@ -1,0 +1,17 @@
+# plain TD3 baseline.
+type: mlp
+actor:
+  hidden_dims: [256, 256]
+critic:
+  hidden_dims: [256, 256]
+
+lr: 3e-4
+buffer_size: 1000000
+batch_size: 256
+tau: 0.005
+policy_delay: 2
+exploration_noise: 0.1
+target_noise: 0.2
+noise_clip: 0.5
+gamma: 0.99
+start_steps: 25000

@@ -1,0 +1,6 @@
+Decision criterion,Winner,Evidence,Caveat
+Lowest attention-sweep perplexity,Sparse block ctx 1024,PPL 60.68,Step-budget result; batch size changes with context.
+Best memory efficiency in attention sweep,GQA ctx 512,Peak 3.63 GB,Memory is not normalized across context lengths.
+Best inference throughput in attention sweep,GQA ctx 512,87972 tokens/s,Shorter contexts naturally benchmark faster.
+Best 2048-token extrapolation,ALiBi,PPL @2048 83.73,All positional runs trained at context 512.
+Best convolutional hybrid,Pre Attention,PPL 63.23,"Compared against closest non-conv GQA reference, not an exact GQA+RoPE ablation."

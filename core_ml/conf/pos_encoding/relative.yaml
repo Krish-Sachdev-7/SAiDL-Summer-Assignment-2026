@@ -1,0 +1,3 @@
+# learned bias by relative distance.
+type: relative
+max_relative_positions: 128

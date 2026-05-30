@@ -1,0 +1,13 @@
+torch
+numpy
+pandas
+matplotlib
+tqdm
+hydra-core
+omegaconf
+wandb
+datasets
+transformers
+tokenizers
+gymnasium[mujoco]
+mujoco

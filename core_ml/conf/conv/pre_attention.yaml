@@ -1,0 +1,3 @@
+# small causal conv before each attention block.
+type: pre_attention
+kernel_size: 5

@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.eggs/
+dist/
+build/
+.vscode/
+.kaggle_runner_progress/
+*.pt
+*.pth
+outputs/
+wandb/
+.env
+*.log
+.ipynb_checkpoints/

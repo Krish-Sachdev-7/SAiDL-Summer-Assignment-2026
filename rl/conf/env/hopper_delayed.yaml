@@ -1,0 +1,4 @@
+# reward is released every K steps.
+name: Hopper-v5
+wrapper: delayed_reward
+delay_k: 10

@@ -1,0 +1,19 @@
+Part,Requirement,Selected experiment,Status,Report PPL,Run URL
+Part 1,Baseline full-attention Transformer at context 1024,coreml_p1_baseline_full_abs_ctx1024,Complete,65.02193033093884,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/gyealu4a
+Part 2,Sliding-window attention at context 512,coreml_p2_sliding_window_ctx512,Complete,64.13368240593338,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/s7jtrjqq
+Part 2,Sliding-window attention at context 1024,coreml_p2_sliding_window_ctx1024,Complete,70.53222320324154,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/jyniv41v
+Part 2,Sliding-window attention at context 2048,coreml_p2_sliding_window_ctx2048,Complete,122.8585729862938,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/30zfwy42
+Part 2,Sliding-window attention at context 4096,coreml_p2_sliding_window_ctx4096,Complete,153.58791262066225,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/pnuksk52
+Part 2,Sparse-block attention at context 512,coreml_p2_sparse_block_ctx512,Complete,69.0807593862718,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/c27xrb4g
+Part 2,Sparse-block attention at context 1024,coreml_p2_sparse_block_ctx1024,Complete,60.67511431202836,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/0gmcbzac
+Part 2,Sparse-block attention at context 2048,coreml_p2_sparse_block_ctx2048,Complete,79.0919157209101,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/0zx17pfo
+Part 2,Sparse-block attention at context 4096,coreml_p2_sparse_block_ctx4096,Complete,96.90368609641992,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/rf7qslez
+Part 2,Grouped-query attention at context 512,coreml_p2_gqa_ctx512,Complete,62.69940356967389,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/vqwj1dkl
+Part 2,Grouped-query attention at context 1024,coreml_p2_gqa_ctx1024,Complete,65.76611203687968,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/mdbgwpzd
+Part 2,Grouped-query attention at context 2048,coreml_p2_gqa_ctx2048,Complete,109.69736333756832,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/2k9836jo
+Part 2,Grouped-query attention at context 4096,coreml_p2_gqa_ctx4096,Complete,149.98078028669966,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/0i87yv2e
+Part 3,RoPE trained at context 512 with extrapolation eval,coreml_p3_rope_train512,Complete,59.094672492375096,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/uz6g881m
+Part 3,ALiBi trained at context 512 with extrapolation eval,coreml_p3_alibi_train512,Complete,58.804232091297216,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/38i0pnm1
+Part 3,Relative positional encoding trained at context 512 with extrapolation eval,coreml_p3_relative_train512,Complete,61.70058135059122,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/3b7o8z8s
+Part 4,Pre-attention Conv1D hybrid with GQA and RoPE,coreml_p4_pre_attention_gqa_rope_ctx1024,Complete,63.23261318670567,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/e0lzy1ft
+Part 4,Gated convolutional FFN hybrid with GQA and RoPE,coreml_p4_gated_ffn_gqa_rope_ctx1024,Complete,71.70352101849419,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/h03r0qck

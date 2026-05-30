@@ -1,0 +1,6 @@
+Setting,MLP final,Transformer final,Final delta,MLP best,Transformer best,Best delta
+Hidden velocities,318.1,253.0,-65.1,999.1,986.3,-12.8
+Noise sigma=0.1,357.6,288.4,-69.2,370.5,300.5,-69.9
+Noise sigma=0.3,234.3,325.0,90.7,266.7,405.5,138.8
+Delay K=10,3007.5,2954.4,-53.1,3309.7,3158.5,-151.2
+Delay K=30,390.4,511.8,121.4,1072.6,571.9,-500.7

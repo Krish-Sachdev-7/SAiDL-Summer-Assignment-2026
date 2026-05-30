@@ -1,0 +1,4 @@
+Model,Attention,Position,Conv,Context,Best/Report step,Best/Report val loss,Best/Report val PPL,Delta PPL vs GQA ref,Final val PPL,Peak mem GB,Train tok/s,Infer tok/s,Run URL
+Reference GQA non-conv,gqa,absolute,none,1024,12000.0,4.186104691028595,65.76611203687968,0.0,65.76611203687968,4.12425708770752,21179.524351249493,73944.48439294308,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/mdbgwpzd
+Pre Attention,gqa,rope,pre_attention,1024,4500.0,4.146820199489594,63.23261318670567,-2.5334988501740057,72.3574118203623,4.236458778381348,17847.536677229677,63133.49908313292,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/e0lzy1ft
+Gated Ffn,gqa,rope,gated_ffn,1024,3000.0,4.272539854049683,71.70352101849419,5.93740898161451,356.74938046418094,4.667081832885742,11313.259652129038,43452.86126492248,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/h03r0qck

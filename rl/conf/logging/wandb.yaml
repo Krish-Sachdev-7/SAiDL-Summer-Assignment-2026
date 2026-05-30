@@ -1,0 +1,6 @@
+wandb:
+  enable: true
+  project: saidl-rl
+  entity: null
+  group: null
+  tags: []

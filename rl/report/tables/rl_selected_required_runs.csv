@@ -1,0 +1,21 @@
+Run,part,agent,env,L,Final,Best,Best step,Gap,stability,hardware,Runtime (h),Resume
+p1 mlp s42,Part 1,MLP,Full,1,1364.2,3440.7,900000,2076.5,late deterioration,Tesla P100-PCIE-16GB,1.82,no
+p1 mlp s43,Part 1,MLP,Full,1,1004.3,3543.1,970000,2538.8,late deterioration,Tesla P100-PCIE-16GB,1.84,no
+p1 mlp s44,Part 1,MLP,Full,1,3540.2,3547.8,820000,7.6,stable,Tesla P100-PCIE-16GB,1.88,no
+p1 tr L4 s42,Part 1,Transformer,Full,4,3509.9,3596.1,680000,86.2,stable,Tesla P100-PCIE-16GB,5.04,no
+p1 tr L8 s42,Part 1,Transformer,Full,8,1778.8,3377.4,780000,1598.6,late deterioration,Tesla P100-PCIE-16GB,5.68,no
+p1 tr L16 s42,Part 1,Transformer,Full,16,3459.6,3459.6,1000000,0.0,stable/final-best,Tesla P100-PCIE-16GB,6.10,yes
+p1 tr L32 s42,Part 1,Transformer,Full,32,3035.7,3353.2,820000,317.6,mild deterioration,Tesla T4 x2,11.66,yes
+p2 hidden mlp s42,Part 2a,MLP,Hidden velocity,1,318.1,999.1,250000,681.0,late deterioration,Tesla T4 x2,1.73,yes
+p2 hidden tr s42,Part 2a,Transformer,Hidden velocity,8,253.0,986.3,100000,733.3,late deterioration,Tesla T4 x2,6.06,no
+p2 noise .1 mlp s42,Part 2b,MLP,Noisy,1,357.6,370.5,880000,12.9,stable,Tesla T4 x2,2.00,no
+p2 noise .1 tr s42,Part 2b,Transformer,Noisy,8,288.4,300.5,890000,12.1,stable,Tesla T4 x2,4.47,yes
+p2 noise .3 mlp s42,Part 2b,MLP,Noisy,1,234.3,266.7,470000,32.4,stable,Tesla T4 x2,1.99,no
+p2 noise .3 tr s42,Part 2b,Transformer,Noisy,8,325.0,405.5,970000,80.5,stable,Tesla T4 x2,0.36,yes
+p2 delay 10 mlp s42,Part 2c,MLP,Delayed reward,1,3007.5,3309.7,740000,302.2,mild deterioration,Tesla T4 x2,1.93,no
+p2 delay 10 tr s42,Part 2c,Transformer,Delayed reward,8,2954.4,3158.5,840000,204.1,mild deterioration,Tesla T4 x2,5.61,no
+p2 delay 30 mlp s42,Part 2c,MLP,Delayed reward,1,390.4,1072.6,130000,682.1,late deterioration,Tesla T4 x2,1.80,no
+p2 delay 30 tr s42,Part 2c,Transformer,Delayed reward,8,511.8,571.9,500000,60.1,stable,Tesla T4 x2,3.45,yes
+p2 rlhf tr s42,Part 2d,Transformer,Full,8,155.6,1035.3,220000,879.8,late deterioration,Unknown,6.12,no
+p3 attn full s42,Part 3,Transformer,Full,8,3321.9,3442.7,920000,120.8,stable,Tesla T4 x2,3.85,yes
+p3 attn hidden s42,Part 3,Transformer,Hidden velocity,8,293.6,745.3,340000,451.7,late deterioration,Tesla T4 x2,5.71,no

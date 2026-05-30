@@ -1,0 +1,7 @@
+# null train cap means use the full train split.
+dataset_name: wikitext
+dataset_config: wikitext-2-raw-v1
+context_length: 512
+eval_context_lengths: [512, 1024, 2048]
+train_token_limit: null
+val_token_limit: 300000

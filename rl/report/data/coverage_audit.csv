@@ -1,0 +1,21 @@
+name,part,task,agent,required,status,selected_run_id,recent_attempts
+rl_p1_mlp_seed42,Part 1,MLP TD3 baseline,MLP,yes,selected,orduqlzt,1
+rl_p1_mlp_seed43,Part 1,MLP TD3 baseline,MLP,yes,selected,12tb4cex,1
+rl_p1_mlp_seed44,Part 1,MLP TD3 baseline,MLP,yes,selected,xe1bvoqz,1
+rl_p1_tr_L4_seed42,Part 1,Transformer TD3 sweep,Transformer,yes,selected,k4mmxrji,2
+rl_p1_tr_L8_seed42,Part 1,Transformer TD3 sweep,Transformer,yes,selected,jcs1nkci,1
+rl_p1_tr_L16_seed42,Part 1,Transformer TD3 sweep,Transformer,yes,selected,d6s0vtx6,4
+rl_p1_tr_L32_seed42,Part 1,Transformer TD3 sweep,Transformer,yes,selected,tc91exur,2
+rl_p2_hidden_vel_mlp_seed42,Part 2a,Hidden velocities,MLP,yes,selected,96m7x5eb,2
+rl_p2_hidden_vel_tr_seed42,Part 2a,Hidden velocities,Transformer,yes,selected,4hl8amlc,1
+rl_p2_noise01_mlp_seed42,Part 2b,Observation noise,MLP,yes,selected,lgmxbqai,1
+rl_p2_noise01_tr_seed42,Part 2b,Observation noise,Transformer,yes,selected,3lt7il9g,3
+rl_p2_noise03_mlp_seed42,Part 2b,Observation noise,MLP,yes,selected,anlzqstp,1
+rl_p2_noise03_tr_seed42,Part 2b,Observation noise,Transformer,yes,selected,f4lc5xjg,2
+rl_p2_delay10_mlp_seed42,Part 2c,Delayed rewards,MLP,yes,selected,523e0uha,1
+rl_p2_delay10_tr_seed42,Part 2c,Delayed rewards,Transformer,yes,selected,hfiawzrg,1
+rl_p2_delay30_mlp_seed42,Part 2c,Delayed rewards,MLP,yes,selected,15bzu83r,1
+rl_p2_delay30_tr_seed42,Part 2c,Delayed rewards,Transformer,yes,selected,kkdfxotj,2
+rl_p2_rlhf_tr_seed42,Part 2d,RLHF reward model,Transformer,yes,selected,rvckskwt,1
+rl_p3_attn_support_full_seed42,Part 3,Attention support rollout,Transformer,yes,selected,78e2wcm0,2
+rl_p3_attn_support_hidden_seed42,Part 3,Attention support rollout,Transformer,yes,selected,lwsokb8n,1

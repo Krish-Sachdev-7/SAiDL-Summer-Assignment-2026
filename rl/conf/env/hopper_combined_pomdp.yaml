@@ -1,0 +1,5 @@
+# bonus combined POMDP wrapper.
+name: Hopper-v5
+wrapper: combined
+noise_sigma: 0.1
+delay_k: 10

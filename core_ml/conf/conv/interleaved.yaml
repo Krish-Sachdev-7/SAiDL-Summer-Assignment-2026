@@ -1,0 +1,3 @@
+# alternate conv and attention blocks.
+type: interleaved
+kernel_size: 7

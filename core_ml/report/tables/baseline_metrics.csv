@@ -1,0 +1,2 @@
+Model,Context,Batch,Steps,Best/Report step,Best/Report val loss,Best/Report val PPL,Final val loss,Final val PPL,Train tok/s,Infer tok/s,Peak mem GB,Virtual epoch sec,Run URL
+Full attention + learned absolute positions,1024,4,12000,12000,4.17472460269928,65.02193033093884,4.17472460269928,65.02193033093884,20993.080383016048,72664.61124803555,4.14113712310791,115.68578577752704,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/gyealu4a

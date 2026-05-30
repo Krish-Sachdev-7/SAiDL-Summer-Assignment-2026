@@ -1,0 +1,7 @@
+# learned reward model settings.
+type: rlhf
+segment_length: 25
+num_comparisons: 5000
+reward_model_lr: 1e-3
+reward_model_hidden: [256, 256]
+reward_update_interval: 10000
