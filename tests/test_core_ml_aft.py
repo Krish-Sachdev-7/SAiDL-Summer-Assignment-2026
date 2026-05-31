@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core_ml" / "src"))
 
 from model import DecoderLM
+from aft import AFTLocal
 
 _TRAIN_SPEC = importlib.util.spec_from_file_location(
     "core_ml_train_for_tests",
@@ -86,6 +87,40 @@ class CoreMLAFTTests(unittest.TestCase):
 
         self.assertEqual(valid_lengths, [16])
         self.assertEqual(skipped_lengths, [32, 64])
+
+    def test_aft_local_uses_configured_chunks_and_matches_dense_reference(self):
+        torch.manual_seed(1234)
+        module = AFTLocal(
+            d_model=8,
+            max_seq_len=12,
+            window_size=4,
+            dropout=0.0,
+            aft_chunk_size=3,
+        )
+        self.assertEqual(module.chunk_size, 3)
+        module.eval()
+        x = torch.randn(2, 12, 8)
+
+        actual = module(x)
+
+        q = torch.sigmoid(module.q_proj(x))
+        k = module.k_proj(x)
+        v = module.v_proj(x)
+        idx = torch.arange(x.size(1))
+        dist = idx[:, None] - idx[None, :]
+        local = (dist >= 0) & (dist < module.window_size)
+        wb = module.pos_bias[: x.size(1), : x.size(1)].masked_fill(
+            ~local,
+            torch.finfo(k.float().dtype).min,
+        )
+        logits = wb.float().unsqueeze(0).unsqueeze(-1) + k.float().unsqueeze(1)
+        weights = torch.exp(logits - logits.max(dim=2, keepdim=True).values)
+        weights = weights.masked_fill(~local.view(1, x.size(1), x.size(1), 1), 0.0)
+        numer = (weights * v.float().unsqueeze(1)).sum(dim=2)
+        denom = weights.sum(dim=2).clamp_min(1e-6)
+        expected = module.out_proj((q.float() * (numer / denom)).to(q.dtype))
+
+        self.assertTrue(torch.allclose(actual, expected, atol=1e-5, rtol=1e-5))
 
 
 if __name__ == "__main__":

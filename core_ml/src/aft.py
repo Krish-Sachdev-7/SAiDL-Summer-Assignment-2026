@@ -36,12 +36,18 @@ class AFTFull(nn.Module):
             causal = key_positions.unsqueeze(0) <= query_positions.unsqueeze(1)
             wb = self.pos_bias[start:end, :seq_len]
 
-            def chunk_fn(q_chunk: torch.Tensor, k_full: torch.Tensor, v_full: torch.Tensor, wb_chunk: torch.Tensor) -> torch.Tensor:
+            def chunk_fn(
+                q_chunk: torch.Tensor,
+                k_full: torch.Tensor,
+                v_full: torch.Tensor,
+                wb_chunk: torch.Tensor,
+                causal_mask: torch.Tensor,
+            ) -> torch.Tensor:
                 q_f = q_chunk.float()
                 k_f = k_full.float()
                 v_f = v_full.float()
                 wb_f = wb_chunk.float()
-                mask = causal.view(1, end - start, seq_len, 1)
+                mask = causal_mask.view(1, causal_mask.size(0), causal_mask.size(1), 1)
                 logits = wb_f.unsqueeze(0).unsqueeze(-1) + k_f.unsqueeze(1)
                 logits = logits.masked_fill(~mask, torch.finfo(logits.dtype).min)
                 weights = torch.exp(logits - logits.max(dim=2, keepdim=True).values)
@@ -52,9 +58,9 @@ class AFTFull(nn.Module):
 
             q_chunk = q[:, start:end]
             if torch.is_grad_enabled() and self.training:
-                chunk = checkpoint(chunk_fn, q_chunk, k, v, wb, use_reentrant=False)
+                chunk = checkpoint(chunk_fn, q_chunk, k, v, wb, causal, use_reentrant=False)
             else:
-                chunk = chunk_fn(q_chunk, k, v, wb)
+                chunk = chunk_fn(q_chunk, k, v, wb, causal)
             chunks.append(chunk)
 
         out = torch.cat(chunks, dim=1).to(out_dtype)
@@ -67,6 +73,7 @@ class AFTLocal(nn.Module):
         super().__init__()
         self.max_seq_len = int(max_seq_len)
         self.window_size = int(window_size)
+        self.chunk_size = max(1, int(kwargs.get("aft_chunk_size", kwargs.get("chunk_size", 16))))
         self.q_proj = nn.Linear(d_model, d_model)
         self.k_proj = nn.Linear(d_model, d_model)
         self.v_proj = nn.Linear(d_model, d_model)
@@ -81,19 +88,50 @@ class AFTLocal(nn.Module):
         q = torch.sigmoid(self.q_proj(x))
         k = self.k_proj(x)
         v = self.v_proj(x)
+        out_dtype = q.dtype
 
-        idx = torch.arange(seq_len, device=x.device)
-        dist = idx[:, None] - idx[None, :]
-        local = (dist >= 0) & (dist < self.window_size)
+        chunks = []
+        for start in range(0, seq_len, self.chunk_size):
+            end = min(start + self.chunk_size, seq_len)
+            key_start = max(0, start - self.window_size + 1)
+            query_positions = torch.arange(start, end, device=x.device)
+            key_positions = torch.arange(key_start, end, device=x.device)
+            local = (
+                (key_positions.unsqueeze(0) <= query_positions.unsqueeze(1))
+                & ((query_positions.unsqueeze(1) - key_positions.unsqueeze(0)) < self.window_size)
+            )
+            wb = self.pos_bias[start:end, key_start:end]
+            q_chunk = q[:, start:end]
+            k_local = k[:, key_start:end]
+            v_local = v[:, key_start:end]
 
-        wb = self.pos_bias[:seq_len, :seq_len].masked_fill(~local, torch.finfo(k.dtype).min)
-        logits = wb.unsqueeze(0).unsqueeze(-1) + k.float().unsqueeze(1)
-        weights = torch.exp(logits - logits.max(dim=2, keepdim=True).values)
-        weights = weights * local.unsqueeze(0).unsqueeze(-1)
-        numer = (weights * v.unsqueeze(1)).sum(dim=2)
-        denom = weights.sum(dim=2).clamp_min(1e-6)
-        out = q.float() * (numer / denom)
-        out = out.to(q.dtype)
+            def chunk_fn(
+                q_part: torch.Tensor,
+                k_part: torch.Tensor,
+                v_part: torch.Tensor,
+                wb_part: torch.Tensor,
+                local_mask: torch.Tensor,
+            ) -> torch.Tensor:
+                q_f = q_part.float()
+                k_f = k_part.float()
+                v_f = v_part.float()
+                wb_f = wb_part.float()
+                mask = local_mask.view(1, local_mask.size(0), local_mask.size(1), 1)
+                logits = wb_f.unsqueeze(0).unsqueeze(-1) + k_f.unsqueeze(1)
+                logits = logits.masked_fill(~mask, torch.finfo(logits.dtype).min)
+                weights = torch.exp(logits - logits.max(dim=2, keepdim=True).values)
+                weights = weights.masked_fill(~mask, 0.0)
+                numer = (weights * v_f.unsqueeze(1)).sum(dim=2)
+                denom = weights.sum(dim=2).clamp_min(1e-6)
+                return q_f * (numer / denom)
+
+            if torch.is_grad_enabled() and self.training:
+                chunk = checkpoint(chunk_fn, q_chunk, k_local, v_local, wb, local, use_reentrant=False)
+            else:
+                chunk = chunk_fn(q_chunk, k_local, v_local, wb, local)
+            chunks.append(chunk)
+
+        out = torch.cat(chunks, dim=1).to(out_dtype)
         return self.out_proj(self.drop(out))
 
 
