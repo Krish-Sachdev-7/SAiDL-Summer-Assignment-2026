@@ -82,6 +82,11 @@ class RLBonusConfigTests(unittest.TestCase):
         self.assertNotIn("run_block(\"rl_required\"", source)
         self.assertNotIn("run_block(\"core_required\"", source)
 
+    def test_runner_reruns_finalization_when_checkpoint_reached_target(self):
+        source = runner_source()
+
+        self.assertIn("rerunning finalization from checkpoint", source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,6 @@
 import sys
 import unittest
+import importlib.util
 from pathlib import Path
 
 import torch
@@ -10,6 +11,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core_ml" / "src"))
 
 from model import DecoderLM
+
+_TRAIN_SPEC = importlib.util.spec_from_file_location(
+    "core_ml_train_for_tests",
+    ROOT / "core_ml" / "src" / "train.py",
+)
+core_ml_train = importlib.util.module_from_spec(_TRAIN_SPEC)
+assert _TRAIN_SPEC.loader is not None
+_TRAIN_SPEC.loader.exec_module(core_ml_train)
+_filter_extrapolation_lengths = core_ml_train._filter_extrapolation_lengths
 
 
 def tiny_aft_cfg(variant: str):
@@ -69,6 +79,13 @@ class CoreMLAFTTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "max_seq_len"):
             model(idx)
+
+    def test_aft_absolute_extrapolation_skips_lengths_past_max_seq_len(self):
+        cfg = tiny_aft_cfg("full")
+        valid_lengths, skipped_lengths = _filter_extrapolation_lengths(cfg, [16, 32, 64])
+
+        self.assertEqual(valid_lengths, [16])
+        self.assertEqual(skipped_lengths, [32, 64])
 
 
 if __name__ == "__main__":

@@ -84,6 +84,24 @@ def cosine_lr(step: int, max_steps: int, base_lr: float, warmup_steps: int) -> f
     return 0.1 * base_lr + 0.9 * base_lr * 0.5 * (1 + math.cos(math.pi * progress))
 
 
+def _filter_extrapolation_lengths(cfg, eval_lengths: list[int]) -> tuple[list[int], list[int]]:
+    """Keep only extrapolation contexts that the configured model can execute."""
+    lengths = [int(length) for length in eval_lengths]
+    max_seq_len = int(OmegaConf.select(cfg, "model.max_seq_len", default=0) or 0)
+    if max_seq_len <= 0:
+        return lengths, []
+
+    attention_type = str(OmegaConf.select(cfg, "model.attention.type", default="")).lower()
+    pos_type = str(OmegaConf.select(cfg, "pos_encoding.type", default="")).lower()
+    bounded_by_max_seq_len = attention_type == "aft" or pos_type == "absolute"
+    if not bounded_by_max_seq_len:
+        return lengths, []
+
+    valid = [length for length in lengths if length <= max_seq_len]
+    skipped = [length for length in lengths if length > max_seq_len]
+    return valid, skipped
+
+
 @torch.no_grad()
 def evaluate(model: nn.Module, loader, device: torch.device, max_batches: int):
     """Evaluate loss and perplexity."""
@@ -265,6 +283,13 @@ def main(cfg: DictConfig):
         if "scaler" in ck and ck["scaler"] is not None:
             scaler.load_state_dict(ck["scaler"])
         step = int(ck.get("step", 0))
+        last_loss = float(ck.get("final_train_loss", last_loss))
+        last_val_loss = float(ck.get("final_val_loss", last_val_loss))
+        last_val_ppl = float(ck.get("final_val_ppl", last_val_ppl))
+        last_throughput = float(ck.get("throughput", last_throughput))
+        last_inference_throughput = float(ck.get("inference_throughput", last_inference_throughput))
+        last_peak_gb = float(ck.get("peak_mem_gb", last_peak_gb))
+        last_grad_norm = float(ck.get("grad_norm", last_grad_norm))
         best_val_loss = float(ck.get("best_val_loss", ck.get("final_val_loss", best_val_loss)))
         best_val_ppl = float(ck.get("best_val_ppl", ck.get("final_val_ppl", best_val_ppl)))
         best_step = int(ck.get("best_step", step if math.isfinite(best_val_loss) else 0))
@@ -425,6 +450,14 @@ def main(cfg: DictConfig):
     print(f"Saved checkpoint to {ckpt_path}")
 
     eval_lengths = list(OmegaConf.select(cfg, "data.eval_context_lengths", default=[]) or [])
+    eval_lengths, skipped_eval_lengths = _filter_extrapolation_lengths(cfg, eval_lengths)
+    if skipped_eval_lengths:
+        max_seq_len = int(OmegaConf.select(cfg, "model.max_seq_len", default=0) or 0)
+        skipped = ", ".join(str(length) for length in skipped_eval_lengths)
+        print(
+            f"Skipping extrapolation context(s) beyond max_seq_len={max_seq_len}: "
+            f"{skipped}"
+        )
     if eval_lengths:
         print("Running extrapolation test...")
         extrap_results = extrapolation_test(model, cfg, eval_lengths, device)
