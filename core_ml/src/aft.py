@@ -18,7 +18,7 @@ class AFTFull(nn.Module):
         self.pos_bias = nn.Parameter(torch.zeros(self.max_seq_len, self.max_seq_len))
         self.drop = nn.Dropout(dropout)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, pos_bias=None) -> torch.Tensor:
         _, seq_len, _ = x.shape
         if seq_len > self.max_seq_len:
             raise ValueError(f"AFTFull got seq_len={seq_len}, max_seq_len={self.max_seq_len}")
@@ -74,8 +74,10 @@ class AFTLocal(nn.Module):
         self.pos_bias = nn.Parameter(torch.zeros(self.max_seq_len, self.max_seq_len))
         self.drop = nn.Dropout(dropout)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, pos_bias=None) -> torch.Tensor:
         _, seq_len, _ = x.shape
+        if seq_len > self.max_seq_len:
+            raise ValueError(f"AFTLocal got seq_len={seq_len}, max_seq_len={self.max_seq_len}")
         q = torch.sigmoid(self.q_proj(x))
         k = self.k_proj(x)
         v = self.v_proj(x)
@@ -84,12 +86,14 @@ class AFTLocal(nn.Module):
         dist = idx[:, None] - idx[None, :]
         local = (dist >= 0) & (dist < self.window_size)
 
-        wb = self.pos_bias[:seq_len, :seq_len].masked_fill(~local, float("-inf"))
-        logits = wb.unsqueeze(0).unsqueeze(-1) + k.unsqueeze(1)
-        weights = torch.exp(logits - logits.max(dim=2, keepdim=True).values) * local.unsqueeze(0).unsqueeze(-1)
+        wb = self.pos_bias[:seq_len, :seq_len].masked_fill(~local, torch.finfo(k.dtype).min)
+        logits = wb.unsqueeze(0).unsqueeze(-1) + k.float().unsqueeze(1)
+        weights = torch.exp(logits - logits.max(dim=2, keepdim=True).values)
+        weights = weights * local.unsqueeze(0).unsqueeze(-1)
         numer = (weights * v.unsqueeze(1)).sum(dim=2)
         denom = weights.sum(dim=2).clamp_min(1e-6)
-        out = q * (numer / denom)
+        out = q.float() * (numer / denom)
+        out = out.to(q.dtype)
         return self.out_proj(self.drop(out))
 
 
@@ -97,13 +101,16 @@ class AFTSimple(nn.Module):
     """AFT without position bias."""
     def __init__(self, d_model: int, dropout: float = 0.1, **kwargs):
         super().__init__()
+        self.max_seq_len = int(kwargs.get("max_seq_len", kwargs.get("seq_len", 0)) or 0)
         self.q_proj = nn.Linear(d_model, d_model)
         self.k_proj = nn.Linear(d_model, d_model)
         self.v_proj = nn.Linear(d_model, d_model)
         self.out_proj = nn.Linear(d_model, d_model)
         self.drop = nn.Dropout(dropout)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, pos_bias=None) -> torch.Tensor:
+        if self.max_seq_len > 0 and x.size(1) > self.max_seq_len:
+            raise ValueError(f"AFTSimple got seq_len={x.size(1)}, max_seq_len={self.max_seq_len}")
         q = torch.sigmoid(self.q_proj(x))
         k = self.k_proj(x)
         v = self.v_proj(x)

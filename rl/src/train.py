@@ -110,6 +110,49 @@ def maybe_init_wandb(cfg):
     )
 
 
+def compute_attention_metrics(attn_layers) -> dict[str, float]:
+    """Summarise current-token attention over the context window."""
+    if not attn_layers:
+        return {}
+
+    vectors = []
+    entropies = []
+    max_weights = []
+    effective_context = []
+    for attn in attn_layers:
+        if attn is None:
+            continue
+        probs = attn.detach().float()
+        if probs.dim() != 4:
+            continue
+        last_query = probs[:, :, -1, :]
+        last_query = last_query.clamp_min(1e-8)
+        last_query = last_query / last_query.sum(dim=-1, keepdim=True).clamp_min(1e-8)
+        entropy = -(last_query * last_query.log()).sum(dim=-1)
+        vectors.append(last_query)
+        entropies.append(entropy.reshape(-1))
+        max_weights.append(last_query.max(dim=-1).values.reshape(-1))
+        effective_context.append(torch.exp(entropy).reshape(-1))
+
+    if not vectors:
+        return {}
+
+    mean_vector = torch.cat([v.reshape(-1, v.size(-1)) for v in vectors], dim=0).mean(dim=0)
+    entropy_values = torch.cat(entropies, dim=0)
+    max_values = torch.cat(max_weights, dim=0)
+    effective_values = torch.cat(effective_context, dim=0)
+
+    metrics = {
+        "attention/entropy_mean": float(entropy_values.mean().item()),
+        "attention/entropy_std": float(entropy_values.std(unbiased=False).item()),
+        "attention/max_weight_mean": float(max_values.mean().item()),
+        "attention/effective_context_mean": float(effective_values.mean().item()),
+    }
+    for lag, value in enumerate(torch.flip(mean_vector, dims=[0])):
+        metrics[f"attention/lag_{lag}"] = float(value.item())
+    return metrics
+
+
 def evaluate_agent(cfg, agent, device, n_episodes: int):
     env = make_env(cfg)
     rewards = []
@@ -150,6 +193,64 @@ def evaluate_agent(cfg, agent, device, n_episodes: int):
 
     env.close()
     return float(np.mean(rewards))
+
+
+def evaluate_agent_with_attention(cfg, agent, device, n_episodes: int) -> dict[str, float]:
+    """Evaluate a Transformer actor and collect attention summaries."""
+    env = make_env(cfg)
+    rewards = []
+    per_decision_metrics = []
+
+    context = int(getattr(cfg.agent.actor, "context_length", 1))
+    act_dim = int(env.action_space.shape[0])
+
+    for _ in range(n_episodes):
+        obs, _ = env.reset()
+        done = False
+        truncated = False
+        ep_reward = 0.0
+
+        obs_hist = [np.zeros_like(obs, dtype=np.float32) for _ in range(max(context - 1, 0))]
+        act_hist = [np.zeros(act_dim, dtype=np.float32) for _ in range(max(context - 1, 0))]
+
+        while not (done or truncated):
+            obs_hist.append(np.asarray(obs, dtype=np.float32))
+            obs_hist = obs_hist[-context:]
+            act_input = act_hist[-(context - 1):] + [np.zeros(act_dim, dtype=np.float32)]
+            action = agent.select_action(
+                {
+                    "obs_seq": np.stack(obs_hist, axis=0),
+                    "act_seq": np.stack(act_input, axis=0),
+                },
+                noise=0.0,
+            )
+            metrics = compute_attention_metrics(getattr(agent.actor, "last_attn_weights", []))
+            if metrics:
+                per_decision_metrics.append(metrics)
+            act_hist.append(np.asarray(action, dtype=np.float32))
+            act_hist = act_hist[-(context - 1):]
+
+            obs, reward, done, truncated, _ = env.step(action)
+            ep_reward += float(reward)
+
+        rewards.append(ep_reward)
+
+    env.close()
+    eval_metrics = {
+        "eval/return": float(np.mean(rewards)),
+        "eval/return_std": float(np.std(rewards)),
+    }
+    if per_decision_metrics:
+        keys = sorted({key for item in per_decision_metrics for key in item})
+        for key in keys:
+            values = [item[key] for item in per_decision_metrics if key in item]
+            if key == "attention/entropy_std":
+                continue
+            eval_metrics[key] = float(np.mean(values))
+        entropy_values = [item["attention/entropy_mean"] for item in per_decision_metrics if "attention/entropy_mean" in item]
+        if entropy_values:
+            eval_metrics["attention/entropy_std"] = float(np.std(entropy_values))
+    return eval_metrics
 
 
 @hydra.main(version_base=None, config_path="../conf", config_name="config")
@@ -364,7 +465,20 @@ def main(cfg: DictConfig):
             save_latest_checkpoint()
 
         if step % int(cfg.eval_interval) == 0:
-            eval_return = evaluate_agent(cfg, agent, device, n_episodes=int(cfg.eval_episodes))
+            if cfg.agent.type == "transformer":
+                eval_metrics = evaluate_agent_with_attention(
+                    cfg,
+                    agent,
+                    device,
+                    n_episodes=int(cfg.eval_episodes),
+                )
+                eval_return = float(eval_metrics["eval/return"])
+            else:
+                eval_return = evaluate_agent(cfg, agent, device, n_episodes=int(cfg.eval_episodes))
+                eval_metrics = {
+                    "eval/return": float(eval_return),
+                    "eval/return_std": 0.0,
+                }
             final_eval_return = float(eval_return)
             if run is not None:
                 import wandb
@@ -372,7 +486,7 @@ def main(cfg: DictConfig):
                 wandb.log(
                     {
                         "step": step,
-                        "eval/return": float(eval_return),
+                        **{k: float(v) for k, v in eval_metrics.items()},
                         **{k: float(v) for k, v in metrics.items()},
                     }
                 )
