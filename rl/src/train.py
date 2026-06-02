@@ -153,7 +153,92 @@ def compute_attention_metrics(attn_layers) -> dict[str, float]:
     return metrics
 
 
-def evaluate_agent(cfg, agent, device, n_episodes: int):
+class RunningObservationNormalizer:
+    """Online per-dimension observation standardizer."""
+    def __init__(self, obs_dim: int, eps: float = 1e-4, clip: float = 10.0):
+        self.obs_dim = int(obs_dim)
+        self.eps = float(eps)
+        self.clip = float(clip)
+        self.count = 0.0
+        self.mean = np.zeros(self.obs_dim, dtype=np.float64)
+        self.var = np.ones(self.obs_dim, dtype=np.float64)
+
+    def update(self, obs) -> None:
+        batch = np.asarray(obs, dtype=np.float64).reshape(-1, self.obs_dim)
+        if batch.size == 0:
+            return
+
+        batch_count = float(batch.shape[0])
+        batch_mean = batch.mean(axis=0)
+        batch_var = batch.var(axis=0)
+        if self.count == 0.0:
+            self.mean = batch_mean
+            self.var = np.maximum(batch_var, self.eps)
+            self.count = batch_count
+            return
+
+        delta = batch_mean - self.mean
+        total = self.count + batch_count
+        m_a = self.var * self.count
+        m_b = batch_var * batch_count
+        m2 = m_a + m_b + np.square(delta) * self.count * batch_count / total
+        self.mean = self.mean + delta * batch_count / total
+        self.var = np.maximum(m2 / total, self.eps)
+        self.count = total
+
+    def normalize(self, obs) -> np.ndarray:
+        arr = np.asarray(obs, dtype=np.float32)
+        if self.count == 0.0:
+            return arr.astype(np.float32, copy=False)
+        normed = (arr - self.mean.astype(np.float32)) / np.sqrt(self.var.astype(np.float32) + self.eps)
+        return np.clip(normed, -self.clip, self.clip).astype(np.float32, copy=False)
+
+    def state_dict(self) -> dict:
+        return {
+            "obs_dim": self.obs_dim,
+            "eps": self.eps,
+            "clip": self.clip,
+            "count": self.count,
+            "mean": self.mean,
+            "var": self.var,
+        }
+
+    def load_state_dict(self, state: dict | None) -> None:
+        if not state:
+            return
+        self.count = float(state.get("count", 0.0))
+        self.mean = np.asarray(state.get("mean", self.mean), dtype=np.float64)
+        self.var = np.asarray(state.get("var", self.var), dtype=np.float64)
+        self.eps = float(state.get("eps", self.eps))
+        self.clip = float(state.get("clip", self.clip))
+
+
+def _obs_norm_enabled(cfg) -> bool:
+    return bool(OmegaConf.select(cfg, "agent.actor.obs_norm", default=False))
+
+
+def _normalizer_state(normalizer: RunningObservationNormalizer | None) -> dict | None:
+    return normalizer.state_dict() if normalizer is not None else None
+
+
+def _normalize_obs(normalizer: RunningObservationNormalizer | None, obs) -> np.ndarray:
+    if normalizer is None:
+        return np.asarray(obs, dtype=np.float32)
+    return normalizer.normalize(obs)
+
+
+def _maybe_update_best_eval(
+    eval_return: float,
+    step: int,
+    best_eval_return: float,
+    best_eval_step: int,
+) -> tuple[float, int, bool]:
+    if float(eval_return) > float(best_eval_return):
+        return float(eval_return), int(step), True
+    return float(best_eval_return), int(best_eval_step), False
+
+
+def evaluate_agent(cfg, agent, device, n_episodes: int, obs_normalizer: RunningObservationNormalizer | None = None):
     env = make_env(cfg)
     rewards = []
 
@@ -170,8 +255,9 @@ def evaluate_agent(cfg, agent, device, n_episodes: int):
         act_hist = [np.zeros(act_dim, dtype=np.float32) for _ in range(max(context - 1, 0))]
 
         while not (done or truncated):
+            policy_obs = _normalize_obs(obs_normalizer, obs)
             if cfg.agent.type in {"transformer", "xlstm"}:
-                obs_hist.append(np.asarray(obs, dtype=np.float32))
+                obs_hist.append(policy_obs)
                 obs_hist = obs_hist[-context:]
                 act_input = act_hist[-(context - 1):] + [np.zeros(act_dim, dtype=np.float32)]
                 action = agent.select_action(
@@ -184,7 +270,7 @@ def evaluate_agent(cfg, agent, device, n_episodes: int):
                 act_hist.append(np.asarray(action, dtype=np.float32))
                 act_hist = act_hist[-(context - 1):]
             else:
-                action = agent.select_action(obs, noise=0.0)
+                action = agent.select_action(policy_obs, noise=0.0)
 
             obs, reward, done, truncated, _ = env.step(action)
             ep_reward += float(reward)
@@ -195,7 +281,13 @@ def evaluate_agent(cfg, agent, device, n_episodes: int):
     return float(np.mean(rewards))
 
 
-def evaluate_agent_with_attention(cfg, agent, device, n_episodes: int) -> dict[str, float]:
+def evaluate_agent_with_attention(
+    cfg,
+    agent,
+    device,
+    n_episodes: int,
+    obs_normalizer: RunningObservationNormalizer | None = None,
+) -> dict[str, float]:
     """Evaluate a Transformer actor and collect attention summaries."""
     env = make_env(cfg)
     rewards = []
@@ -214,7 +306,8 @@ def evaluate_agent_with_attention(cfg, agent, device, n_episodes: int) -> dict[s
         act_hist = [np.zeros(act_dim, dtype=np.float32) for _ in range(max(context - 1, 0))]
 
         while not (done or truncated):
-            obs_hist.append(np.asarray(obs, dtype=np.float32))
+            policy_obs = _normalize_obs(obs_normalizer, obs)
+            obs_hist.append(policy_obs)
             obs_hist = obs_hist[-context:]
             act_input = act_hist[-(context - 1):] + [np.zeros(act_dim, dtype=np.float32)]
             action = agent.select_action(
@@ -264,6 +357,7 @@ def main(cfg: DictConfig):
     obs_dim = int(env.observation_space.shape[0])
     act_dim = int(env.action_space.shape[0])
     max_action = float(env.action_space.high[0])
+    obs_normalizer = RunningObservationNormalizer(obs_dim) if _obs_norm_enabled(cfg) else None
 
     if cfg.agent.type == "mlp":
         actor = MLPActor(obs_dim, act_dim, list(cfg.agent.actor.hidden_dims), max_action=max_action).to(device)
@@ -320,6 +414,8 @@ def main(cfg: DictConfig):
         agent.critic2_optim.load_state_dict(resume_ckpt["critic2_optim"])
         rl_start_step = int(resume_ckpt["step"]) + 1
         _restore_rng_state(resume_ckpt.get("rng_state"))
+        if obs_normalizer is not None:
+            obs_normalizer.load_state_dict(resume_ckpt.get("obs_normalizer"))
         print(f"Resumed RL from {rl_resume} at step {rl_start_step}")
 
     if cfg.agent.type in {"transformer", "xlstm"}:
@@ -336,6 +432,9 @@ def main(cfg: DictConfig):
         _restore_replay_buffer(replay, resume_ckpt.get("replay"))
 
     step = rl_start_step - 1
+    final_eval_return = float(resume_ckpt.get("final_eval_return", float("nan"))) if resume_ckpt else float("nan")
+    best_eval_return = float(resume_ckpt.get("best_eval_return", float("-inf"))) if resume_ckpt else float("-inf")
+    best_eval_step = int(resume_ckpt.get("best_eval_step", 0)) if resume_ckpt else 0
     checkpoint_saved = False
     experiment_name = str(cfg.experiment.name)
     checkpoint_dir = RL_ROOT / "checkpoints" / _safe_name(experiment_name)
@@ -362,8 +461,12 @@ def main(cfg: DictConfig):
                 "critic1_optim": agent.critic1_optim.state_dict(),
                 "critic2_optim": agent.critic2_optim.state_dict(),
                 "replay": _serialize_replay_buffer(replay),
+                "obs_normalizer": _normalizer_state(obs_normalizer),
                 "rng_state": _capture_rng_state(),
                 "step": int(step),
+                "final_eval_return": float(final_eval_return),
+                "best_eval_return": float(best_eval_return),
+                "best_eval_step": int(best_eval_step),
             },
             path,
         )
@@ -377,6 +480,10 @@ def main(cfg: DictConfig):
     def save_final_checkpoint() -> None:
         save_checkpoint(checkpoint_dir / "final_rl_model.pt")
         save_checkpoint(RL_ROOT / "final_rl_model.pt")
+
+    def save_best_checkpoint() -> None:
+        save_checkpoint(checkpoint_dir / "best_rl_model.pt")
+        save_checkpoint(RL_ROOT / "best_rl_model.pt")
 
     def _save_on_exit(*_args):
         save_latest_checkpoint()
@@ -401,18 +508,20 @@ def main(cfg: DictConfig):
         pref_learner = PreferenceLearner(rm, cfg)
 
     obs, _ = env.reset()
+    if obs_normalizer is not None:
+        obs_normalizer.update(obs)
     context = int(getattr(cfg.agent.actor, "context_length", 1))
     obs_hist = [np.zeros(obs_dim, dtype=np.float32) for _ in range(max(context - 1, 0))]
     act_hist = [np.zeros(act_dim, dtype=np.float32) for _ in range(max(context - 1, 0))]
 
-    final_eval_return = float("nan")
     metrics = {"critic1_loss": float("nan"), "critic2_loss": float("nan"), "actor_loss": float("nan")}
     for step in range(rl_start_step, int(cfg.total_steps) + 1):
+        policy_obs = _normalize_obs(obs_normalizer, obs)
         if step <= int(cfg.agent.start_steps):
             action = env.action_space.sample()
         else:
             if cfg.agent.type in {"transformer", "xlstm"}:
-                obs_hist.append(np.asarray(obs, dtype=np.float32))
+                obs_hist.append(policy_obs)
                 obs_hist = obs_hist[-context:]
                 act_in = act_hist[-(context - 1):] + [np.zeros(act_dim, dtype=np.float32)]
                 action = agent.select_action(
@@ -423,21 +532,24 @@ def main(cfg: DictConfig):
                     noise=float(cfg.agent.exploration_noise),
                 )
             else:
-                action = agent.select_action(obs, noise=float(cfg.agent.exploration_noise))
+                action = agent.select_action(policy_obs, noise=float(cfg.agent.exploration_noise))
 
         next_obs, reward, done, truncated, _ = env.step(action)
         terminal = bool(done or truncated)
+        if obs_normalizer is not None:
+            obs_normalizer.update(next_obs)
+        next_policy_obs = _normalize_obs(obs_normalizer, next_obs)
 
         reward_to_store = float(reward)
         if pref_learner is not None and step > int(cfg.agent.start_steps):
             with torch.no_grad():
                 r_pred = pref_learner.reward_model(
-                    torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0),
+                    torch.tensor(policy_obs, dtype=torch.float32, device=device).unsqueeze(0),
                     torch.tensor(action, dtype=torch.float32, device=device).unsqueeze(0),
                 )
             reward_to_store = float(r_pred.item())
 
-        replay.add(obs, action, reward_to_store, next_obs, terminal)
+        replay.add(policy_obs, action, reward_to_store, next_policy_obs, terminal)
 
         if cfg.agent.type in {"transformer", "xlstm"}:
             act_hist.append(np.asarray(action, dtype=np.float32))
@@ -455,6 +567,8 @@ def main(cfg: DictConfig):
 
         if terminal:
             obs, _ = env.reset()
+            if obs_normalizer is not None:
+                obs_normalizer.update(obs)
             obs_hist = [np.zeros(obs_dim, dtype=np.float32) for _ in range(max(context - 1, 0))]
             act_hist = [np.zeros(act_dim, dtype=np.float32) for _ in range(max(context - 1, 0))]
         else:
@@ -471,15 +585,30 @@ def main(cfg: DictConfig):
                     agent,
                     device,
                     n_episodes=int(cfg.eval_episodes),
+                    obs_normalizer=obs_normalizer,
                 )
                 eval_return = float(eval_metrics["eval/return"])
             else:
-                eval_return = evaluate_agent(cfg, agent, device, n_episodes=int(cfg.eval_episodes))
+                eval_return = evaluate_agent(
+                    cfg,
+                    agent,
+                    device,
+                    n_episodes=int(cfg.eval_episodes),
+                    obs_normalizer=obs_normalizer,
+                )
                 eval_metrics = {
                     "eval/return": float(eval_return),
                     "eval/return_std": 0.0,
                 }
             final_eval_return = float(eval_return)
+            best_eval_return, best_eval_step, improved_best = _maybe_update_best_eval(
+                eval_return=eval_return,
+                step=step,
+                best_eval_return=best_eval_return,
+                best_eval_step=best_eval_step,
+            )
+            if improved_best:
+                save_best_checkpoint()
             if run is not None:
                 import wandb
 
@@ -487,10 +616,18 @@ def main(cfg: DictConfig):
                     {
                         "step": step,
                         **{k: float(v) for k, v in eval_metrics.items()},
+                        "eval/best_return": float(best_eval_return),
+                        "eval/best_step": float(best_eval_step),
+                        "eval/final_minus_best": float(final_eval_return - best_eval_return),
+                        "obs_norm/enabled": float(obs_normalizer is not None),
+                        "obs_norm/count": float(obs_normalizer.count if obs_normalizer is not None else 0.0),
                         **{k: float(v) for k, v in metrics.items()},
                     }
                 )
-            print(f"step={step} eval_return={eval_return:.2f} metrics={metrics}")
+            print(
+                f"step={step} eval_return={eval_return:.2f} "
+                f"best_eval_return={best_eval_return:.2f} best_step={best_eval_step} metrics={metrics}"
+            )
 
     save_final_checkpoint()
 
@@ -506,6 +643,11 @@ def main(cfg: DictConfig):
         },
         metrics={
             "final_eval_return": round(final_eval_return, 6),
+            "best_eval_return": round(best_eval_return, 6),
+            "best_eval_step": best_eval_step,
+            "final_minus_best_eval_return": round(final_eval_return - best_eval_return, 6),
+            "obs_norm_enabled": obs_normalizer is not None,
+            "obs_norm_count": round(float(obs_normalizer.count if obs_normalizer is not None else 0.0), 6),
             "last_critic1_loss": round(float(metrics.get("critic1_loss", float("nan"))), 6),
             "last_critic2_loss": round(float(metrics.get("critic2_loss", float("nan"))), 6),
             "last_actor_loss": round(float(metrics.get("actor_loss", float("nan"))), 6),

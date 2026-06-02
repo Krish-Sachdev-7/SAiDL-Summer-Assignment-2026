@@ -11,6 +11,38 @@ sys.path.insert(0, str(ROOT / "rl" / "src"))
 
 
 class RLAttentionAnalysisTests(unittest.TestCase):
+    def test_running_observation_normalizer_round_trips_state(self):
+        from train import RunningObservationNormalizer
+
+        norm = RunningObservationNormalizer(obs_dim=3)
+        norm.update([[1.0, 2.0, 3.0], [3.0, 4.0, 5.0]])
+
+        normalized = norm.normalize([1.0, 2.0, 3.0])
+        restored = RunningObservationNormalizer(obs_dim=3)
+        restored.load_state_dict(norm.state_dict())
+
+        self.assertEqual(tuple(normalized.shape), (3,))
+        self.assertTrue(torch.isfinite(torch.as_tensor(normalized)).all().item())
+        self.assertTrue(
+            torch.allclose(
+                torch.as_tensor(normalized),
+                torch.as_tensor(restored.normalize([1.0, 2.0, 3.0])),
+            )
+        )
+
+    def test_best_eval_tracking_keeps_larger_return(self):
+        from train import _maybe_update_best_eval
+
+        best_return, best_step, improved = _maybe_update_best_eval(10.0, 100, float("-inf"), 0)
+        self.assertTrue(improved)
+        self.assertEqual(best_return, 10.0)
+        self.assertEqual(best_step, 100)
+
+        best_return, best_step, improved = _maybe_update_best_eval(7.0, 200, best_return, best_step)
+        self.assertFalse(improved)
+        self.assertEqual(best_return, 10.0)
+        self.assertEqual(best_step, 100)
+
     def test_attention_metrics_use_recent_lag_indexing_and_entropy(self):
         from train import compute_attention_metrics
 
