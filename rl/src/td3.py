@@ -22,6 +22,7 @@ class TD3:
         self.policy_delay = int(cfg.agent.policy_delay)
         self.target_noise = float(cfg.agent.target_noise)
         self.noise_clip = float(cfg.agent.noise_clip)
+        self.grad_clip_norm = float(getattr(cfg.agent, "grad_clip_norm", 0.0) or 0.0)
 
         self.device = next(self.actor.parameters()).device
         lr = float(cfg.agent.lr)
@@ -85,10 +86,14 @@ class TD3:
 
         self.critic1_optim.zero_grad(set_to_none=True)
         critic1_loss.backward()
+        if self.grad_clip_norm > 0.0:
+            nn.utils.clip_grad_norm_(self.critic1.parameters(), max_norm=self.grad_clip_norm)
         self.critic1_optim.step()
 
         self.critic2_optim.zero_grad(set_to_none=True)
         critic2_loss.backward()
+        if self.grad_clip_norm > 0.0:
+            nn.utils.clip_grad_norm_(self.critic2.parameters(), max_norm=self.grad_clip_norm)
         self.critic2_optim.step()
 
         metrics = {
@@ -106,6 +111,8 @@ class TD3:
 
             self.actor_optim.zero_grad(set_to_none=True)
             actor_loss.backward()
+            if self.grad_clip_norm > 0.0:
+                nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=self.grad_clip_norm)
             self.actor_optim.step()
 
             self._soft_update(self.actor, self.actor_target)

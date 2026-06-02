@@ -119,6 +119,11 @@ class AlgorithmDistillationTests(unittest.TestCase):
             self.assertEqual(train.returncode, 0, msg=train.stderr)
             self.assertTrue(checkpoint.exists())
             self.assertTrue((checkpoint.parent / "ad_latest.pt").exists())
+            self.assertTrue((checkpoint.parent / "ad_best.pt").exists())
+            best_saved = torch.load(checkpoint, map_location="cpu", weights_only=False)
+            self.assertEqual(best_saved["selection"], "best_train_loss")
+            self.assertIn("best_loss", best_saved)
+            self.assertIn("best_step", best_saved)
 
             evaluate = subprocess.run(
                 [
@@ -147,6 +152,34 @@ class AlgorithmDistillationTests(unittest.TestCase):
             metrics = json.loads(evaluate.stdout.strip().splitlines()[-1])
             self.assertIn("eval/return", metrics)
             self.assertEqual(metrics["eval/episodes"], 2)
+
+    def test_source_policy_applies_checkpoint_observation_normalizer(self):
+        from rl.src.algorithm_distillation import _SourcePolicyState, _TD3ActorPolicy
+
+        class EchoFirstObs(torch.nn.Module):
+            max_action = 10.0
+
+            def forward(self, obs):
+                return obs[:, :1]
+
+        obs_norm_state = {
+            "count": 2.0,
+            "mean": torch.tensor([10.0, 0.0]),
+            "var": torch.tensor([4.0, 1.0]),
+            "eps": 1e-4,
+            "clip": 10.0,
+        }
+        policy = _TD3ActorPolicy(
+            EchoFirstObs(),
+            agent_type="mlp",
+            context_length=1,
+            device=torch.device("cpu"),
+            obs_normalizer_state=obs_norm_state,
+        )
+
+        action = policy.select_action([12.0, 0.0], _SourcePolicyState(act_dim=1), noise=0.0)
+
+        self.assertAlmostEqual(float(action[0]), 1.0, places=3)
 
 
 if __name__ == "__main__":

@@ -354,29 +354,57 @@ class _SourcePolicyState:
         self.act_hist = self.act_hist[-max(1, self.context_length - 1) :]
 
 
+class _FrozenObservationNormalizer:
+    """Observation normalizer restored from a TD3 checkpoint for teacher rollout."""
+
+    def __init__(self, state: dict | None):
+        self.enabled = bool(state) and float(state.get("count", 0.0)) > 0.0
+        self.count = float(state.get("count", 0.0)) if state else 0.0
+        self.mean = np.asarray(state.get("mean", []), dtype=np.float32) if state else np.asarray([], dtype=np.float32)
+        self.var = np.asarray(state.get("var", []), dtype=np.float32) if state else np.asarray([], dtype=np.float32)
+        self.eps = float(state.get("eps", 1e-4)) if state else 1e-4
+        self.clip = float(state.get("clip", 10.0)) if state else 10.0
+
+    def normalize(self, obs) -> np.ndarray:
+        arr = np.asarray(obs, dtype=np.float32)
+        if not self.enabled or self.mean.shape != arr.shape or self.var.shape != arr.shape:
+            return arr
+        normed = (arr - self.mean) / np.sqrt(self.var + self.eps)
+        return np.clip(normed, -self.clip, self.clip).astype(np.float32, copy=False)
+
+
 class _TD3ActorPolicy:
-    def __init__(self, actor: nn.Module, agent_type: str, context_length: int, device: torch.device):
+    def __init__(
+        self,
+        actor: nn.Module,
+        agent_type: str,
+        context_length: int,
+        device: torch.device,
+        obs_normalizer_state: dict | None = None,
+    ):
         self.actor = actor
         self.agent_type = str(agent_type)
         self.context_length = int(context_length)
         self.device = device
         self.max_action = float(getattr(actor, "max_action", 1.0))
+        self.obs_normalizer = _FrozenObservationNormalizer(obs_normalizer_state)
 
     def select_action(self, obs, state: _SourcePolicyState, noise: float = 0.0) -> np.ndarray:
         self.actor.eval()
+        policy_obs = self.obs_normalizer.normalize(obs)
         with torch.no_grad():
             if self.agent_type == "transformer":
-                obs_hist = state.obs_hist + [np.asarray(obs, dtype=np.float32)]
+                obs_hist = [self.obs_normalizer.normalize(x) for x in state.obs_hist] + [policy_obs]
                 obs_hist = obs_hist[-self.context_length :]
                 act_hist = state.act_hist[-max(0, self.context_length - 1) :]
                 act_input = act_hist + [np.zeros(state.act_dim, dtype=np.float32)]
-                obs_seq = _left_pad_sequence(obs_hist, self.context_length, np.asarray(obs, dtype=np.float32).shape[0])
+                obs_seq = _left_pad_sequence(obs_hist, self.context_length, policy_obs.shape[0])
                 act_seq = _left_pad_sequence(act_input, self.context_length, state.act_dim)
                 obs_t = torch.as_tensor(obs_seq, dtype=torch.float32, device=self.device).unsqueeze(0)
                 act_t = torch.as_tensor(act_seq, dtype=torch.float32, device=self.device).unsqueeze(0)
                 action = self.actor(obs_t, act_t).squeeze(0)
             else:
-                obs_t = torch.as_tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
+                obs_t = torch.as_tensor(policy_obs, dtype=torch.float32, device=self.device).unsqueeze(0)
                 action = self.actor(obs_t).squeeze(0)
         action_np = action.cpu().numpy()
         if noise > 0:
@@ -431,7 +459,7 @@ def _load_source_policy(path: str | Path | None, env) -> _TD3ActorPolicy | None:
             pos_encoding="learned",
         ).to(device)
         actor.load_state_dict(actor_state, strict=False)
-        return _TD3ActorPolicy(actor, "transformer", context_length, device)
+        return _TD3ActorPolicy(actor, "transformer", context_length, device, ckpt.get("obs_normalizer"))
 
     hidden_dims = []
     layer_idx = 0
@@ -442,7 +470,15 @@ def _load_source_policy(path: str | Path | None, env) -> _TD3ActorPolicy | None:
         hidden_dims = [256, 256]
     actor = MLPActor(obs_dim, act_dim, hidden_dims, max_action=max_action).to(device)
     actor.load_state_dict(actor_state, strict=False)
-    return _TD3ActorPolicy(actor, "mlp", 1, device)
+    return _TD3ActorPolicy(actor, "mlp", 1, device, ckpt.get("obs_normalizer"))
+
+
+def _ad_final_checkpoint_path(checkpoint: Path) -> Path:
+    return checkpoint.with_name(f"{checkpoint.stem}_final{checkpoint.suffix}")
+
+
+def _ad_best_checkpoint_path(checkpoint: Path) -> Path:
+    return checkpoint.parent / "ad_best.pt"
 
 
 def train_ad_model(
@@ -475,8 +511,18 @@ def train_ad_model(
     checkpoint = Path(checkpoint)
     checkpoint.parent.mkdir(parents=True, exist_ok=True)
     latest_checkpoint = checkpoint.parent / "ad_latest.pt"
+    best_checkpoint = _ad_best_checkpoint_path(checkpoint)
+    final_checkpoint = _ad_final_checkpoint_path(checkpoint)
 
-    def save_model(path: Path, step_value: int, loss_value: float) -> None:
+    def save_model(
+        path: Path,
+        step_value: int,
+        loss_value: float,
+        *,
+        best_loss_value: float,
+        best_step_value: int,
+        selection: str,
+    ) -> None:
         ckpt = {
             "model_state": model.state_dict(),
             "obs_dim": obs_dim,
@@ -487,11 +533,16 @@ def train_ad_model(
             "n_heads": int(n_heads),
             "train_steps": int(step_value),
             "loss": float(loss_value),
+            "best_loss": float(best_loss_value),
+            "best_step": int(best_step_value),
+            "selection": str(selection),
         }
         torch.save(ckpt, path)
 
     step = 0
     last_loss = math.nan
+    best_loss = math.inf
+    best_step = 0
     resume_from = ""
     resume_path = latest_checkpoint if latest_checkpoint.exists() else checkpoint
     if resume_path.exists():
@@ -507,6 +558,8 @@ def train_ad_model(
             model.load_state_dict(saved["model_state"])
             step = min(int(saved.get("train_steps", 0)), int(train_steps))
             last_loss = float(saved.get("loss", math.nan))
+            best_loss = float(saved.get("best_loss", last_loss if math.isfinite(last_loss) else math.inf))
+            best_step = int(saved.get("best_step", step if math.isfinite(best_loss) else 0))
             resume_from = str(resume_path)
             if not quiet and step:
                 print(f"Resumed AD from {resume_path} at step {step}/{train_steps}", flush=True)
@@ -524,21 +577,71 @@ def train_ad_model(
             opt.step()
             step += 1
             last_loss = float(loss.item())
+            if math.isfinite(last_loss) and last_loss < best_loss:
+                best_loss = last_loss
+                best_step = step
+                save_model(
+                    best_checkpoint,
+                    step,
+                    last_loss,
+                    best_loss_value=best_loss,
+                    best_step_value=best_step,
+                    selection="best_train_loss",
+                )
             if not quiet and (step == 1 or step % 100 == 0):
                 print(f"step={step} ad/loss={last_loss:.6f}", flush=True)
             if int(checkpoint_interval) > 0 and step % int(checkpoint_interval) == 0:
-                save_model(latest_checkpoint, step, last_loss)
+                save_model(
+                    latest_checkpoint,
+                    step,
+                    last_loss,
+                    best_loss_value=best_loss,
+                    best_step_value=best_step,
+                    selection="latest",
+                )
             if step >= int(train_steps):
                 break
 
-    save_model(latest_checkpoint, step, last_loss)
-    save_model(checkpoint, step, last_loss)
+    if not best_checkpoint.exists():
+        best_loss = last_loss if math.isfinite(last_loss) else math.inf
+        best_step = step
+        save_model(
+            best_checkpoint,
+            step,
+            last_loss,
+            best_loss_value=best_loss,
+            best_step_value=best_step,
+            selection="best_train_loss",
+        )
+
+    save_model(
+        latest_checkpoint,
+        step,
+        last_loss,
+        best_loss_value=best_loss,
+        best_step_value=best_step,
+        selection="latest",
+    )
+    save_model(
+        final_checkpoint,
+        step,
+        last_loss,
+        best_loss_value=best_loss,
+        best_step_value=best_step,
+        selection="final",
+    )
+    best_saved = torch.load(best_checkpoint, map_location="cpu", weights_only=False)
+    torch.save(best_saved, checkpoint)
     return {
         "ad/train_loss": float(last_loss),
+        "ad/best_train_loss": float(best_loss),
+        "ad/best_step": int(best_step),
         "ad/train_steps": int(train_steps),
         "ad/samples": len(dataset),
         "checkpoint": str(checkpoint),
         "latest_checkpoint": str(latest_checkpoint),
+        "best_checkpoint": str(best_checkpoint),
+        "final_checkpoint": str(final_checkpoint),
         "resume_from": resume_from,
     }
 

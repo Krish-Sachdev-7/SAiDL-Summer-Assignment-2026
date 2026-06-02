@@ -61,25 +61,37 @@ class RLBonusConfigTests(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, 0, msg=result.stderr)
 
-    def test_runner_runs_only_stabilized_rope_comparison_command(self):
+    def test_runner_runs_only_stabilized_rl_bonus_suite(self):
         source = runner_source()
 
-        self.assertIn("rl_bonus_pos_rope_stable_seed", source)
+        expected_bonus_runs = [
+            "rl_bonus_pos_learned_stable_seed",
+            "rl_bonus_pos_sinusoidal_stable_seed",
+            "rl_bonus_pos_rope_stable_seed",
+            "rl_bonus_combined_L32_stable_seed",
+            "rl_bonus_xlstm_hidden_stable_seed",
+            "rl_bonus_xlstm_delayed_stable_seed",
+        ]
+        for name in expected_bonus_runs:
+            with self.subTest(name=name):
+                self.assertIn(name, source)
+
         self.assertIn("agent.lr=1e-4", source)
         self.assertIn("agent.exploration_noise=0.05", source)
         self.assertIn("agent.target_noise=0.1", source)
         self.assertIn("agent.noise_clip=0.25", source)
         self.assertIn("agent.tau=0.0025", source)
-        self.assertIn("logging.wandb.tags=[final,stability_compare]", source)
+        self.assertIn("agent.grad_clip_norm=10.0", source)
+        self.assertIn("agent.actor.obs_norm=true", source)
+        self.assertIn("logging.wandb.tags=[final,stability_compare,rl_bonus]", source)
+        self.assertIn("algorithm_distillation.py collect", source)
+        self.assertIn("algorithm_distillation.py train", source)
+        self.assertIn("algorithm_distillation.py evaluate", source)
+        self.assertIn("RL_AD_SOURCE_CKPT", source)
+        self.assertIn("ad_transformer_stable.pt", source)
         self.assertIn("run_block(\"rl_bonus\"", source)
         self.assertNotIn("coreml_bonus_aft_full_ctx512", source)
         self.assertNotIn("run_block(\"core_bonus_aft\"", source)
-        self.assertNotIn("rl_bonus_pos_learned_seed", source)
-        self.assertNotIn("rl_bonus_pos_sinusoidal_seed", source)
-        self.assertNotIn("rl_bonus_combined_L32_seed", source)
-        self.assertNotIn("rl_bonus_xlstm_hidden_seed", source)
-        self.assertNotIn("rl_bonus_xlstm_delayed_seed", source)
-        self.assertNotIn("algorithm_distillation.py collect", source)
         self.assertNotIn("run_block(\"rl_required\"", source)
         self.assertNotIn("run_block(\"core_required\"", source)
 
