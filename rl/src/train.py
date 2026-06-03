@@ -238,6 +238,41 @@ def _maybe_update_best_eval(
     return float(best_eval_return), int(best_eval_step), False
 
 
+def _cfg_select(cfg, key: str, default):
+    try:
+        selected = OmegaConf.select(cfg, key, default=None)
+        if selected is not None:
+            return selected
+    except Exception:
+        pass
+    current = cfg
+    for part in key.split("."):
+        if not hasattr(current, part):
+            return default
+        current = getattr(current, part)
+    return current
+
+
+def _scheduled_exploration_noise(cfg, step: int) -> float:
+    initial = float(_cfg_select(cfg, "agent.exploration_noise", 0.0))
+    final = float(_cfg_select(cfg, "agent.exploration_noise_final", initial))
+    decay_steps = int(_cfg_select(cfg, "agent.exploration_noise_decay_steps", 0) or 0)
+    start_steps = int(_cfg_select(cfg, "agent.start_steps", 0) or 0)
+    if decay_steps <= 0:
+        return initial
+    progress = (int(step) - start_steps) / float(decay_steps)
+    progress = float(np.clip(progress, 0.0, 1.0))
+    return float(initial + progress * (final - initial))
+
+
+def _numeric_metrics(metrics: dict) -> dict[str, float]:
+    numeric = {}
+    for key, value in metrics.items():
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            numeric[key] = float(value)
+    return numeric
+
+
 def evaluate_agent(cfg, agent, device, n_episodes: int, obs_normalizer: RunningObservationNormalizer | None = None):
     env = make_env(cfg)
     rewards = []
@@ -515,8 +550,10 @@ def main(cfg: DictConfig):
     act_hist = [np.zeros(act_dim, dtype=np.float32) for _ in range(max(context - 1, 0))]
 
     metrics = {"critic1_loss": float("nan"), "critic2_loss": float("nan"), "actor_loss": float("nan")}
+    current_exploration_noise = float(cfg.agent.exploration_noise)
     for step in range(rl_start_step, int(cfg.total_steps) + 1):
         policy_obs = _normalize_obs(obs_normalizer, obs)
+        current_exploration_noise = _scheduled_exploration_noise(cfg, step)
         if step <= int(cfg.agent.start_steps):
             action = env.action_space.sample()
         else:
@@ -529,10 +566,10 @@ def main(cfg: DictConfig):
                         "obs_seq": np.stack(obs_hist, axis=0),
                         "act_seq": np.stack(act_in, axis=0),
                     },
-                    noise=float(cfg.agent.exploration_noise),
+                    noise=current_exploration_noise,
                 )
             else:
-                action = agent.select_action(policy_obs, noise=float(cfg.agent.exploration_noise))
+                action = agent.select_action(policy_obs, noise=current_exploration_noise)
 
         next_obs, reward, done, truncated, _ = env.step(action)
         terminal = bool(done or truncated)
@@ -619,9 +656,10 @@ def main(cfg: DictConfig):
                         "eval/best_return": float(best_eval_return),
                         "eval/best_step": float(best_eval_step),
                         "eval/final_minus_best": float(final_eval_return - best_eval_return),
+                        "exploration/noise_std": float(current_exploration_noise),
                         "obs_norm/enabled": float(obs_normalizer is not None),
                         "obs_norm/count": float(obs_normalizer.count if obs_normalizer is not None else 0.0),
-                        **{k: float(v) for k, v in metrics.items()},
+                        **_numeric_metrics(metrics),
                     }
                 )
             print(
@@ -646,6 +684,7 @@ def main(cfg: DictConfig):
             "best_eval_return": round(best_eval_return, 6),
             "best_eval_step": best_eval_step,
             "final_minus_best_eval_return": round(final_eval_return - best_eval_return, 6),
+            "last_exploration_noise": round(float(current_exploration_noise), 6),
             "obs_norm_enabled": obs_normalizer is not None,
             "obs_norm_count": round(float(obs_normalizer.count if obs_normalizer is not None else 0.0), 6),
             "last_critic1_loss": round(float(metrics.get("critic1_loss", float("nan"))), 6),
