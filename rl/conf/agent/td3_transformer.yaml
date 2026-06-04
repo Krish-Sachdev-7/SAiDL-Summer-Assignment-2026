@@ -8,7 +8,11 @@ actor:
   pre_ln: true
   obs_norm: true
 critic:
+  type: transformer
   hidden_dims: [256, 256]
+  n_layers: 2
+  n_heads: 4
+  embed_dim: 128
 
 lr: 3e-4
 buffer_size: 1000000

@@ -54,6 +54,18 @@ class TD3:
             return nn.functional.smooth_l1_loss(pred, target, beta=self.huber_beta)
         raise ValueError(f"Unsupported critic_loss: {self.critic_loss_type}")
 
+    @staticmethod
+    def _critic_forward(
+        critic,
+        obs: torch.Tensor,
+        action: torch.Tensor,
+        obs_seq: torch.Tensor | None = None,
+        act_seq: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if obs_seq is not None and act_seq is not None and getattr(critic, "supports_sequence", False):
+            return critic(obs, action, obs_seq=obs_seq, act_seq=act_seq)
+        return critic(obs, action)
+
     def select_action(self, obs, noise: float = 0.0):
         """Select an action, with optional noise."""
         self.actor.eval()
@@ -85,6 +97,11 @@ class TD3:
         done = batch["done"]
 
         has_seq = "obs_seq" in batch
+        use_sequence_critic = bool(
+            has_seq
+            and getattr(self.critic1, "supports_sequence", False)
+            and getattr(self.critic2, "supports_sequence", False)
+        )
         target_noise = self._scheduled_value(
             self.target_noise,
             self.target_noise_final,
@@ -108,8 +125,22 @@ class TD3:
             noise = noise.clamp(-noise_clip, noise_clip)
             next_action = (next_action + noise).clamp(-self.max_action, self.max_action)
 
-            target_q1 = self.critic1_target(next_obs, next_action)
-            target_q2 = self.critic2_target(next_obs, next_action)
+            target_obs_seq = batch["next_obs_seq"] if use_sequence_critic else None
+            target_act_seq = batch["next_act_seq"] if use_sequence_critic else None
+            target_q1 = self._critic_forward(
+                self.critic1_target,
+                next_obs,
+                next_action,
+                obs_seq=target_obs_seq,
+                act_seq=target_act_seq,
+            )
+            target_q2 = self._critic_forward(
+                self.critic2_target,
+                next_obs,
+                next_action,
+                obs_seq=target_obs_seq,
+                act_seq=target_act_seq,
+            )
             target_q = torch.min(target_q1, target_q2)
             target_q = reward + (1.0 - done) * self.gamma * target_q
             unclipped_target_q = target_q
@@ -119,8 +150,10 @@ class TD3:
             else:
                 target_q_clipped_frac = torch.zeros((), device=self.device)
 
-        q1 = self.critic1(obs, action)
-        q2 = self.critic2(obs, action)
+        obs_seq = batch["obs_seq"] if use_sequence_critic else None
+        act_seq = batch["act_seq"] if use_sequence_critic else None
+        q1 = self._critic_forward(self.critic1, obs, action, obs_seq=obs_seq, act_seq=act_seq)
+        q2 = self._critic_forward(self.critic2, obs, action, obs_seq=obs_seq, act_seq=act_seq)
         critic1_loss = self._critic_loss(q1, target_q)
         critic2_loss = self._critic_loss(q2, target_q)
 
@@ -158,6 +191,7 @@ class TD3:
             "q1_mean": float(q1.mean().item()),
             "q2_mean": float(q2.mean().item()),
             "q_gap_abs_mean": float((q1 - q2).abs().mean().item()),
+            "critic_sequence_context": float(use_sequence_critic),
         }
 
         if step % self.policy_delay == 0:
@@ -165,7 +199,13 @@ class TD3:
                 actor_action = self.actor(batch["obs_seq"], batch["act_seq"])
             else:
                 actor_action = self.actor(obs)
-            actor_loss = -self.critic1(obs, actor_action).mean()
+            actor_loss = -self._critic_forward(
+                self.critic1,
+                obs,
+                actor_action,
+                obs_seq=obs_seq,
+                act_seq=act_seq,
+            ).mean()
 
             self.actor_optim.zero_grad(set_to_none=True)
             actor_loss.backward()

@@ -42,6 +42,70 @@ class MLPCritic(nn.Module):
         return self.head(h)
 
 
+class TransformerCritic(nn.Module):
+    """Transformer critic over recent obs/action history and candidate action."""
+    supports_sequence = True
+
+    def __init__(
+        self,
+        obs_dim: int,
+        act_dim: int,
+        embed_dim: int,
+        n_layers: int,
+        n_heads: int,
+        context_length: int,
+    ):
+        super().__init__()
+        if embed_dim % n_heads != 0:
+            raise ValueError("embed_dim must be divisible by n_heads")
+
+        self.obs_dim = int(obs_dim)
+        self.act_dim = int(act_dim)
+        self.embed_dim = int(embed_dim)
+        self.context_length = int(context_length)
+
+        self.input_proj = nn.Linear(self.obs_dim + self.act_dim, self.embed_dim)
+        self.pos_emb = nn.Embedding(self.context_length, self.embed_dim)
+        self.blocks = nn.ModuleList(
+            [_CausalTransformerBlock(self.embed_dim, n_heads) for _ in range(int(n_layers))]
+        )
+        self.ln_f = nn.LayerNorm(self.embed_dim)
+        self.head = nn.Linear(self.embed_dim, 1)
+        self.last_attn_weights = []
+
+    def forward(
+        self,
+        obs: torch.Tensor,
+        action: torch.Tensor,
+        obs_seq: torch.Tensor | None = None,
+        act_seq: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if obs_seq is None or act_seq is None:
+            obs_seq = obs.unsqueeze(1)
+            act_seq = action.unsqueeze(1)
+        else:
+            obs_seq = obs_seq[:, -self.context_length :]
+            act_seq = act_seq[:, -self.context_length :].clone()
+            act_seq[:, -1] = action
+
+        bsz, seq_len, _ = obs_seq.shape
+        if seq_len > self.context_length:
+            raise ValueError("sequence length exceeds critic context_length")
+
+        x = torch.cat([obs_seq, act_seq], dim=-1)
+        x = self.input_proj(x)
+        pos = torch.arange(seq_len, device=x.device)
+        x = x + self.pos_emb(pos).unsqueeze(0)
+
+        self.last_attn_weights = []
+        for block in self.blocks:
+            x, attn = block(x)
+            self.last_attn_weights.append(attn)
+
+        x = self.ln_f(x)
+        return self.head(x[:, -1]).view(bsz, 1)
+
+
 class _CausalTransformerBlock(nn.Module):
     def __init__(self, embed_dim: int, n_heads: int):
         super().__init__()

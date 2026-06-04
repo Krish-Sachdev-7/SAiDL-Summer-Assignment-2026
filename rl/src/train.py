@@ -14,14 +14,14 @@ import torch
 if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parent))
     from env_wrappers import make_env
-    from networks import MLPActor, MLPCritic, TransformerActor
+    from networks import MLPActor, MLPCritic, TransformerActor, TransformerCritic
     from replay_buffer import StandardReplayBuffer, SequenceReplayBuffer
     from td3 import TD3
     from reward_model import RewardModel, PreferenceLearner
     from xlstm_actor import xLSTMActor
 else:
     from .env_wrappers import make_env
-    from .networks import MLPActor, MLPCritic, TransformerActor
+    from .networks import MLPActor, MLPCritic, TransformerActor, TransformerCritic
     from .replay_buffer import StandardReplayBuffer, SequenceReplayBuffer
     from .td3 import TD3
     from .reward_model import RewardModel, PreferenceLearner
@@ -422,8 +422,25 @@ def main(cfg: DictConfig):
     else:
         raise ValueError(f"Unsupported agent type: {cfg.agent.type}")
 
-    critic1 = MLPCritic(obs_dim, act_dim, list(cfg.agent.critic.hidden_dims)).to(device)
-    critic2 = MLPCritic(obs_dim, act_dim, list(cfg.agent.critic.hidden_dims)).to(device)
+    critic_type = str(_cfg_select(cfg, "agent.critic.type", "mlp")).lower()
+    if critic_type == "transformer":
+        if cfg.agent.type not in {"transformer", "xlstm"}:
+            raise ValueError("Transformer critics require a sequence actor/replay configuration.")
+        critic_kwargs = {
+            "obs_dim": obs_dim,
+            "act_dim": act_dim,
+            "embed_dim": int(_cfg_select(cfg, "agent.critic.embed_dim", _cfg_select(cfg, "agent.actor.embed_dim", 128))),
+            "n_layers": int(_cfg_select(cfg, "agent.critic.n_layers", 2)),
+            "n_heads": int(_cfg_select(cfg, "agent.critic.n_heads", _cfg_select(cfg, "agent.actor.n_heads", 4))),
+            "context_length": int(cfg.agent.actor.context_length),
+        }
+        critic1 = TransformerCritic(**critic_kwargs).to(device)
+        critic2 = TransformerCritic(**critic_kwargs).to(device)
+    elif critic_type == "mlp":
+        critic1 = MLPCritic(obs_dim, act_dim, list(cfg.agent.critic.hidden_dims)).to(device)
+        critic2 = MLPCritic(obs_dim, act_dim, list(cfg.agent.critic.hidden_dims)).to(device)
+    else:
+        raise ValueError(f"Unsupported critic type: {critic_type}")
     agent = TD3(actor, critic1, critic2, cfg)
 
     rl_resume = str(
@@ -486,6 +503,7 @@ def main(cfg: DictConfig):
                 "seed": int(cfg.seed),
                 "total_steps": int(cfg.total_steps),
                 "context_length": int(getattr(cfg.agent.actor, "context_length", 1)),
+                "critic_type": str(critic_type),
                 "actor": actor.state_dict(),
                 "critic1": critic1.state_dict(),
                 "critic2": critic2.state_dict(),

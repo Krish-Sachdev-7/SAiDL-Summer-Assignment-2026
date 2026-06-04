@@ -3,6 +3,7 @@ type: mlp
 actor:
   hidden_dims: [256, 256]
 critic:
+  type: mlp
   hidden_dims: [256, 256]
 
 lr: 3e-4

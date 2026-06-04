@@ -37,6 +37,12 @@ The previous stability pass added observation normalization, best-eval checkpoin
    - TD3 now reports target-noise schedule values, target-Q magnitude/clipping fraction, critic Q means, Q disagreement, and gradient norms.
    - The training loop logs the current exploration noise to W&B and writes the final exploration noise into the generated experiment docs.
 
+7. History-conditioned Transformer critics:
+   - Added `TransformerCritic`, enabled through `agent.critic.type=transformer`.
+   - TD3 now passes `obs_seq`/`act_seq` and `next_obs_seq`/`next_act_seq` into sequence-capable critics.
+   - The current candidate action replaces the final action token before Q evaluation, so the critic estimates `Q(history, action)` rather than `Q(current_observation, action)`.
+   - Effect: the critic sees the same temporal context as the sequence actor, which is especially relevant for hidden-velocity, delayed-reward, and combined-POMDP variants where the instantaneous observation is not Markovian.
+
 ## Runner-Level Changes
 
 The stabilized RL bonus runner now applies the new controls to all TD3 bonus commands:
@@ -61,9 +67,12 @@ These changes are expected to reduce, not eliminate, TD3 instability. A high-qua
 - low or zero `target_q_clipped_frac` during normal training,
 - decreasing `exploration/noise_std`,
 - decreasing `target_noise_std` and `target_noise_clip`.
+- logged `critic_sequence_context` equal to `1.0` after updates begin.
 
 If a run still has high best return but poor final return, it should still be reported as instability/late deterioration. The correct report treatment remains to compare best-checkpoint returns and final-checkpoint returns separately.
 
 ## Interpretation Caveat
 
 These changes make the bonus reruns more defensible but do not guarantee monotonic policy improvement. TD3 with partial observability, delayed rewards, noisy observations, and sequence actors can still show seed variance and critic-driven collapse. For the report, the strongest evidence remains the combination of best returns, final returns, best-step timing, return standard deviation, and the new critic/noise diagnostics.
+
+The history-conditioned critic is the most direct architectural remedy added in this pass. If it improves stability, the report should frame the earlier instability as partly attributable to an actor/critic information mismatch: the actor used a memory window, while the critic previously evaluated only the latest observation-action pair. If it does not improve stability, the likely interpretation is that the dominant failure mode is broader TD3/off-policy bootstrapping instability rather than only critic observability.
