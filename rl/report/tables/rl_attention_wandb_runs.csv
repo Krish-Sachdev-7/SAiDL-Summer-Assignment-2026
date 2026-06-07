@@ -1,0 +1,3 @@
+setting,run_id,name,state,url,tags
+full,jx1lmi8i,rl_p3_attn_support_full_seed42,finished,https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/jx1lmi8i,"attention_rerun,final"
+hidden,lap7edb6,rl_p3_attn_support_hidden_seed42,finished,https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/lap7edb6,"attention_rerun,final"

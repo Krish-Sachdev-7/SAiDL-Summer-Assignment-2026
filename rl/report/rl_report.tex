@@ -33,9 +33,9 @@ This report studies whether a causal Transformer policy can use short-term tempo
 
 \section{Task Requirements and Scope}
 
-The assignment asks for TD3 on Hopper-v5 over three MLP seeds, a Transformer actor that attends over a sliding window of the last $L$ observation-action pairs, a context-length sweep over $L \in \{4,8,16,32\}$, independent partial-observability modifications, an RLHF-style learned reward model, and attention analysis for trained Transformer agents~\cite{saidl2026}. All required non-bonus runs in the runner were completed successfully in the final W\&B window. Bonus experiments are reported in a separate section so the required-suite conclusions remain tied to the original 20 completed runs, while the newer bonus evidence can be compared on its own terms.
+The assignment asks for TD3 on Hopper-v5 over three MLP seeds, a Transformer actor that attends over a sliding window of the last $L$ observation-action pairs, a context-length sweep over $L \in \{4,8,16,32\}$, independent partial-observability modifications, an RLHF-style learned reward model, and attention analysis for trained Transformer agents~\cite{saidl2026}. All required non-bonus runs in the runner were completed successfully in the final W\&B window, and the later attention-analysis runner completed the entropy-history and five-episode rollout analysis for both the fully observable and hidden-velocity Transformer policies. Bonus experiments are reported in a separate section so the required-suite conclusions remain tied to the original required suite, while the newer bonus evidence can be compared on its own terms.
 
-Failed, killed, or crashed runs are discussed as engineering roadblocks but are excluded from metric comparisons once a later successful run with the same experiment exists.
+For reproducibility, I keep two views of the run history. Final metric comparisons use the latest finished run for each exact experiment when a completed run exists. The attempt-inclusive run export keeps every non-failed run from the final three-week W\&B window, including crashed runs, because many crashes were Kaggle session-limit interruptions that were later continued under the same experiment name. Runs whose W\&B state is exactly \texttt{failed} are excluded from these attempt-inclusive tables.
 
 \begin{table}[!htbp]
 \centering
@@ -53,7 +53,7 @@ Hidden velocities & Complete & MLP and Transformer runs \\
 Observation noise & Complete & sigma=0.1 and sigma=0.3, both agents \\
 Delayed rewards & Complete & K=10 and K=30, both agents \\
 RLHF-style learned reward & Complete with caveat & rl\_p2\_rlhf\_tr\_seed42 plus reward-model loss; contamination caveat discussed below \\
-Attention analysis & Deferred in this compile & Full attention-analysis write-up left for a later report pass after the new rollout artifacts are integrated \\
+Attention analysis & Complete & jx1lmi8i and lap7edb6 entropy histories plus 5-episode checkpoint rollouts \\
 Bonus positional encoding ablation & Complete supplemental evidence & Latest finished learned/sinusoidal/RoPE hidden-velocity runs use the history-conditioned critic \\
 Bonus combined POMDP & Complete supplemental evidence & \texttt{rl\_bonus\_combined\_L32\_stable\_seed42}, hidden velocity + noise 0.1 + delay K=10 \\
 Bonus Algorithm Distillation & Not counted & No finished AD metric row in the current W\&B export \\
@@ -65,7 +65,7 @@ Bonus xLSTM policy & Not counted & No finished xLSTM metric row in the current W
 
 \subsection{Data Provenance}
 
-The scalar results come from the W\&B project \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl}{saidl-rl}. The repository keeps the final report source, compiled PDF, and figures used for the analysis. Bonus evidence is exported separately under \path{rl/report/data/clean_rl_bonus_runs.csv} and \path{rl/report/tables}, including the exact-name latest-finished selection and the same-name instability comparison.
+The scalar results come from the W\&B project \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl}{saidl-rl}. The repository keeps the final report source, compiled PDF, and figures used for the analysis. Bonus evidence is exported separately under \path{rl/report/data/clean_rl_bonus_runs.csv} and \path{rl/report/tables}, including the exact-name latest-finished selection and the same-name instability comparison. The completed attention-analysis notebook artifacts are included under \path{rl/report/data} and \path{rl/report/figures}; these include W\&B entropy histories, checkpoint manifests, final lag weights, and five-episode rollout summaries.
 
 \section{Method}
 
@@ -99,7 +99,7 @@ The final execution was done on Kaggle with W\&B logging, with initial runs on a
 
 A separate resume issue appeared when a checkpoint saved from a T4 session was resumed on a P100 runtime. The failure was an \texttt{IndexError} inside \texttt{torch.cuda.set\_rng\_state\_all}, caused by restoring CUDA RNG states saved for a different GPU count/layout than the current runtime (because of the way I'd patched checkpoint saves). The fix I came up with during the run window was to continue the final suite on T4, matching the saved checkpoint environment. The final repository also guards CUDA RNG restoration by restoring only the first \texttt{torch.cuda.device\_count()} saved CUDA RNG states. This makes cross-layout continuation safer, although exact bitwise reproducibility is still not a meaningful promise after changing GPU layout.
 
-Several intermediate runs also crashed or failed because of runtime limits or resume mismatches. They are documented in Table~\ref{tab:failed-attempts}, but the comparisons use the later successful run for the same experiment.
+Several intermediate runs crashed because of runtime limits or resume mismatches. Instead of discarding those partial runs, I keep a three-week attempt-inclusive export that includes both crashed and finished runs and excludes only W\&B state \texttt{failed}. Table~\ref{tab:attempt-inclusive} summarizes exact-name groups with more than one non-failed attempt; the full 51-row export is included as \path{rl/report/data/wandb_rl_runs_last3w_nonfailed.csv}.
 
 \section{Debugging and Troubleshooting}
 
@@ -117,8 +117,8 @@ Issue & Diagnosis & Resolution and final status \\
 \midrule
 P100 queue and hardware switch & A runner notebook remained queued for roughly two hours on P100, while T4 allocation became available. This changed wall-clock runtime conditions but did not change the mathematical RL objective. & The final suite records hardware per run. Evaluation-return comparisons are kept separate from runtime-throughput comparisons, and T4/P100 runtime differences are treated as execution caveats rather than algorithmic evidence. \\
 Cross-GPU checkpoint resume failure & T4 checkpoints could save CUDA RNG state for a different GPU layout than the later P100 runtime. Restoring all saved states produced an \texttt{IndexError}. & During execution, affected runs were resumed on matching T4 hardware. In the final code, CUDA RNG restoration is bounded by the current \texttt{torch.cuda.device\_count()}, so extra saved RNG states are ignored instead of crashing resume. \\
-Attention runner config error & The attention rerun initially read \texttt{cfg.agent.context\_length}; the actual Transformer config stores this value under \texttt{cfg.agent.actor.context\_length}. Hydra struct mode therefore raised \texttt{ConfigAttributeError}. & The attention analysis path was revised to read the actor context length. The quantitative attention-analysis section is intentionally deferred in this compile and will be integrated after the new rollout artifacts are ready. \\
-Failed and crashed duplicate runs & Several runs failed from runtime limits, resume mismatches, or notebook interruptions, but later runs with the same experiment name succeeded. Including both would double-count experiments and distort averages. & Failed/crashed attempts are listed only in Table~\ref{tab:failed-attempts}. Main comparisons use the successful final-tagged run for each required experiment. \\
+Attention runner config error & The attention rerun initially read \texttt{cfg.agent.context\_length}; the actual Transformer config stores this value under \texttt{cfg.agent.actor.context\_length}. Hydra struct mode therefore raised \texttt{ConfigAttributeError}. & The attention analysis path was revised to read the actor context length. The completed rerun produced entropy-vs-step histories, final lag weights, checkpoint manifests, and five-episode rollout summaries for full and hidden-velocity policies. \\
+Interrupted duplicate runs & Several runs failed or crashed from runtime limits, resume mismatches, or notebook interruptions, but later runs with the same experiment name often continued or superseded them. Treating all interruptions as bad experiments would lose useful run-history evidence; treating them as independent finished experiments would double-count. & Runs with state \texttt{failed} are excluded. Crashed and finished runs from 2026-05-18 through 2026-06-07 are retained in the attempt-inclusive export. Main metric tables still use the latest finished run for an exact experiment name when a finished run exists. \\
 Learned-reward ambiguity & The intended RLHF setup labels preference pairs using ground-truth segment returns. On code review, later replay entries can contain learned reward predictions, making later reward-model updates susceptible to self-reinforcing reward-model error. & The learned-reward result is reported as an implementation-level learned-reward baseline, not as a clean general claim about RLHF. The large gap versus ground-truth reward is interpreted with this caveat. \\
 Best return much higher than final return & Many runs reached a strong policy before later deterioration. Reporting only final returns would hide learned capability; reporting only best returns would hide instability. & The report keeps both values. Final return is the strict end-of-run metric, best return measures peak learned performance, and the best-final gap is used as a stability diagnostic. \\
 Bonus stability reruns & Early bonus positional runs stayed near 200--250 final return or peaked briefly and collapsed. The stability changes added target-Q diagnostics and, in the latest finished reruns, history-conditioned critic inputs. & The bonus section selects the newest finished run for each exact experiment name. Earlier same-name runs are retained as instability evidence instead of being mixed into the final metric table. \\
@@ -167,24 +167,27 @@ p3 attn hidden s42 & Part 3 & Transformer & Hidden velocity & 8 & 293.6 & 745.3 
 \begin{table}[!htbp]
 \centering
 \scriptsize
-\caption{Recent failed/crashed required attempts. These are excluded from comparison once a later successful run with the same experiment exists.}
-\label{tab:failed-attempts}
+\caption{Exact-name experiment groups with multiple non-failed attempts in the final three-week W\&B window. Crashed runs are retained because they often correspond to Kaggle session-limit continuations; runs with state \texttt{failed} are excluded.}
+\label{tab:attempt-inclusive}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{llrrlll}
+\begin{tabular}{lrlrrlrr}
 \toprule
-Run & State & Last step & Last return & Hardware & Hours & Superseded \\
+Experiment name & Attempts & States & Crashed & Finished & Latest finished id & Latest finished final & Best return any attempt \\
 \midrule
-rl\_p1\_tr\_L4\_seed42 & crashed & 770000 & 2639.4 & Tesla P100-PCIE-16GB & 3.90 & yes \\
-rl\_p1\_tr\_L16\_seed42 & crashed & 190000 & 2252.5 & Tesla P100-PCIE-16GB & 1.18 & yes \\
-rl\_p1\_tr\_L16\_seed42 & crashed & 80000 & 695.9 & Tesla P100-PCIE-16GB & 0.35 & yes \\
-rl\_p1\_tr\_L16\_seed42 & failed &  & -- & Tesla P100-PCIE-16GB & 0.00 & yes \\
-rl\_p1\_tr\_L32\_seed42 & crashed & 50000 & 356.1 & Tesla P100-PCIE-16GB & 0.19 & yes \\
-rl\_p2\_hidden\_vel\_mlp\_seed42 & crashed & 170000 & 210.7 & Tesla T4 x2 & 0.27 & yes \\
-rl\_p2\_noise01\_tr\_seed42 & crashed & 330000 & 281.0 & Tesla T4 x2 & 2.09 & yes \\
-rl\_p2\_noise01\_tr\_seed42 & failed &  & -- & Tesla P100-PCIE-16GB & 0.00 & yes \\
-rl\_p2\_noise03\_tr\_seed42 & crashed & 940000 & 471.9 & Tesla T4 x2 & 5.44 & yes \\
-rl\_p2\_delay30\_tr\_seed42 & crashed & 420000 & 493.5 & Tesla T4 x2 & 2.21 & yes \\
-rl\_p3\_attn\_support\_full\_seed42 & crashed & 430000 & 3343.9 & Tesla T4 x2 & 2.32 & yes \\
+rl\_bonus\_combined\_L32\_stable\_seed42 & 3 & crashed:2; finished:1 & 2 & 1 & 86ypnkri & 213.2 & 251.6 \\
+rl\_bonus\_pos\_learned\_stable\_seed42 & 3 & finished:3 & 0 & 3 & jrmialcm & 727.8 & 862.4 \\
+rl\_bonus\_pos\_rope\_stable\_seed42 & 4 & crashed:3; finished:1 & 3 & 1 & b8n09w71 & 1109.3 & 1266.0 \\
+rl\_bonus\_pos\_sinusoidal\_seed42 & 2 & crashed:1; finished:1 & 1 & 1 & jz1iy3m6 & 249.8 & 984.3 \\
+rl\_bonus\_pos\_sinusoidal\_stable\_seed42 & 4 & crashed:1; finished:3 & 1 & 3 & ivzdtxwf & 900.0 & 1567.0 \\
+rl\_p1\_tr\_L16\_seed42 & 3 & crashed:2; finished:1 & 2 & 1 & d6s0vtx6 & 3459.6 & 3459.6 \\
+rl\_p1\_tr\_L32\_seed42 & 2 & crashed:1; finished:1 & 1 & 1 & tc91exur & 3035.7 & 3353.2 \\
+rl\_p1\_tr\_L4\_seed42 & 2 & crashed:1; finished:1 & 1 & 1 & k4mmxrji & 3509.9 & 3596.1 \\
+rl\_p2\_delay30\_tr\_seed42 & 2 & crashed:1; finished:1 & 1 & 1 & kkdfxotj & 511.8 & 571.9 \\
+rl\_p2\_hidden\_vel\_mlp\_seed42 & 2 & crashed:1; finished:1 & 1 & 1 & 96m7x5eb & 318.1 & 999.1 \\
+rl\_p2\_noise01\_tr\_seed42 & 2 & crashed:1; finished:1 & 1 & 1 & 3lt7il9g & 288.4 & 304.5 \\
+rl\_p2\_noise03\_tr\_seed42 & 2 & crashed:1; finished:1 & 1 & 1 & f4lc5xjg & 325.0 & 487.9 \\
+rl\_p3\_attn\_support\_full\_seed42 & 3 & crashed:1; finished:2 & 1 & 2 & jx1lmi8i & 1397.6 & 3442.7 \\
+rl\_p3\_attn\_support\_hidden\_seed42 & 2 & finished:2 & 0 & 2 & lap7edb6 & 296.4 & 993.2 \\
 \bottomrule
 \end{tabular}
 }
@@ -296,6 +299,96 @@ This matters because it weakens the interpretation of the RLHF comparison. The l
 
 Therefore, I reported the gap in metrics with this caveat. The RLHF run ends at 155.6 final return and peaks at 1035.3, far below the L=8 ground-truth Transformer baseline, which ends at 1778.8 and peaks at 3377.4. A clean rerun would be the better evidence, but the finished RLHF run took 22,043 seconds, or 6.12 hours, and the L=8 ground-truth baseline took 20,459 seconds, or 5.68 hours. Given that this problem was discovered late, I was unable to provide a clean re-run.
 
+\section{Attention Analysis}
+
+The attention-analysis runner now completes the required Section 3 analysis. It uses the two later attention reruns, \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/jx1lmi8i}{\texttt{jx1lmi8i}} for the fully observable Transformer and \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/lap7edb6}{\texttt{lap7edb6}} for the hidden-velocity Transformer. Both runs are finished, both reached 1M environment steps, and both logged attention entropy, effective context, and lag weights across training. The runner then loaded the final Transformer checkpoints and rolled out five evaluation episodes per setting to compare mean attention weights over past timesteps.
+
+This section should be read as raw-attention analysis, not as completed Chefer-style relevance propagation. The repository contains attribution-oriented support code, but the completed artifacts used here are attention weights, entropy summaries, and rollout comparisons. Therefore I treat the optional Chefer et al. attribution item as not counted quantitatively, while the assignment's required attention-analysis item is complete.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Completed attention-analysis runs and rollout summaries. Training entropy is logged over W\&B evaluation points; rollout return and rollout entropy are computed from five final-checkpoint episodes.}
+\label{tab:attention-completed}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrllrrrrr}
+\toprule
+Setting & Run id & Points & Step range & Training entropy & Final effective context & History final & History best & Rollout return & Rollout entropy \\
+\midrule
+full & jx1lmi8i & 100 & 10000--1000000 & 2.075 $\rightarrow$ 1.531 & 4.62 & 1397.6 & 3390.0 @ 990k & 3327.7 $\pm$ 8.1 & 0.520 \\
+hidden & lap7edb6 & 100 & 10000--1000000 & 2.076 $\rightarrow$ 0.919 & 2.51 & 296.4 & 993.2 @ 90k & 235.2 $\pm$ 76.8 & 0.295 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+The training curves show that both policies move away from nearly uniform attention over the eight-token context. A uniform distribution over eight positions has entropy $\log 8 \approx 2.079$, which matches the first logged values for both runs. By the final evaluation, the full-observation run falls to entropy 1.531, while the hidden-velocity run falls much further to 0.919. This means the hidden-velocity policy's attention became more sharply concentrated than the full-observation policy's attention.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/fig_attention_entropy_vs_training_steps.png}
+\caption{Attention entropy $H(A_t)=-\sum_j A_{t,j}\log A_{t,j}$ versus training steps for the completed full-observation and hidden-velocity attention reruns.}
+\label{fig:attention-entropy-steps}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/fig_attention_effective_context_vs_training_steps.png}
+\caption{Effective context estimate over training. Lower values indicate attention concentrated on fewer timesteps.}
+\label{fig:attention-effective-context}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/fig_attention_eval_return_vs_steps.png}
+\caption{Evaluation return over the same training window used for the attention-entropy logs.}
+\label{fig:attention-return-steps}
+\end{figure}
+
+The final lag weights make the same pattern clearer. The full-observation policy assigns 0.451 weight to the most recent token and still spreads nontrivial mass over older lags, especially lag 1 and lag 7. The hidden-velocity policy assigns 0.732 weight to lag 0 and only 0.015 to lag 1. Counterintuitively, the hidden-velocity policy did not learn a broad temporal integration pattern in this final checkpoint; it mostly collapsed onto the newest available observation-action pair, with a secondary contribution from lag 2.
+
+\begin{table}[!htbp]
+\centering
+\small
+\caption{Final mean attention weights by lag for the completed attention reruns.}
+\label{tab:attention-final-lags}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Setting & lag 0 & lag 1 & lag 2 & lag 3 & lag 4 & lag 5 & lag 6 & lag 7 \\
+\midrule
+full & 0.4507 & 0.1432 & 0.0768 & 0.0540 & 0.0589 & 0.0396 & 0.0809 & 0.0959 \\
+hidden & 0.7322 & 0.0155 & 0.1030 & 0.0136 & 0.0207 & 0.0255 & 0.0355 & 0.0542 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/fig_attention_final_lag_weights.png}
+\caption{Final lag weights from the completed attention reruns. Lag 0 is the most recent token in the context window.}
+\label{fig:attention-final-lags}
+\end{figure}
+
+The five-episode checkpoint rollouts complete the required comparison of mean attention weights over past timesteps per decision. The full-observation checkpoint averages 3327.7 return with very low rollout variance, matching the earlier policy-quality result that full-observation Transformer control is strong. The hidden-velocity checkpoint averages only 235.2 return with higher variance. Its rollout entropy is also lower than the full-observation rollout entropy, consistent with the training-history evidence that the hidden policy concentrates attention more aggressively.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/fig_attention_rollout_mean_weights.png}
+\caption{Mean attention weights over the context window during five final-checkpoint rollout episodes. This directly addresses the assignment request to compare full observation against hidden velocity.}
+\label{fig:attention-rollout-mean}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.72\textwidth]{figures/fig_attention_rollout_entropy.png}
+\caption{Rollout attention entropy over five final-checkpoint episodes. The hidden-velocity checkpoint is more concentrated and lower-return.}
+\label{fig:attention-rollout-entropy}
+\end{figure}
+
+The important interpretation is that attention concentration is not automatically evidence of a better memory policy. The full-observation run has higher final entropy, higher effective context, and much stronger rollout return. The hidden-velocity run has lower entropy and stronger concentration on the latest token, but its returns remain low. In this implementation, the attention plots show that the Transformer actor exposes a measurable temporal-attention mechanism, but they also show that the hidden-velocity setting did not reliably exploit the whole context window to reconstruct velocity.
+
 \section{Bonus RL Experiments}
 
 The bonus runs address three additional questions from the assignment PDF: positional encodings under hidden velocity, a combined POMDP stressor, and sequence-model policy alternatives such as Algorithm Distillation or xLSTM. The finished evidence at the time of export covers the positional-encoding ablation and the combined POMDP. I do not count AD or xLSTM because no finished metric row for those experiments is present in the current W\&B export (the runs could not be finished on time).
@@ -377,7 +470,7 @@ The likely culprits I found were characterized as "standard off-policy" actor-cr
 Practical remedies I found for these were save and report best-evaluation checkpoints in addition to final checkpoints, early-stop or select by validation return when compute is limited, run more seeds for high-variance settings, tune actor and critic learning rates separately, monitor Q-value scale and critic losses, increase evaluation frequency near peaks, and make target-policy updates more conservative in unstable settings. For this report I elected to report final return for strict end-of-run comparison, best return for learned capability, and the gap as a measure of run stability.
 
 \begin{figure}[!htbp]
-\centering
+\centering  
 \includegraphics[width=\textwidth]{figures/fig_best_vs_final.png}
 \caption{Final checkpoint return compared with best logged checkpoint return for every successful required run.}
 \label{fig:best-final}
@@ -409,9 +502,9 @@ The final suite used both P100 and T4 hardware because of issues with Kaggle ava
 
 \section{Conclusion}
 
-The required RL suite was completed with all 20 required final-tagged experiments present as successful W\&B runs. The strongest required result is that memory-based policies can be competitive and sometimes strong, especially in full-observation and delayed-reward settings. Under hidden velocity, the latest history-conditioned critic runs separate the positional encodings and improve final returns substantially over the earlier flat-critic attempts. RoPE gives the strongest final bonus return, sinusoidal gives the strongest bonus peak, and learned absolute positions improve but remain behind both.
+The required RL suite was completed with all 20 required final-tagged experiments present as successful W\&B runs, and the attention-analysis rerun now provides the missing entropy histories and five-episode rollout comparison. The strongest required result is that memory-based policies can be competitive and sometimes strong, especially in full-observation and delayed-reward settings. Under hidden velocity, the latest history-conditioned critic runs separate the positional encodings and improve final returns substantially over the earlier flat-critic attempts. RoPE gives the strongest final bonus return, sinusoidal gives the strongest bonus peak, and learned absolute positions improve but remain behind both.
 
-The combined POMDP run is stable but low-return, showing that hidden state, noisy observations, and delayed rewards together are substantially harder than the single-stressor settings. The most important reporting lesson is to separate three ideas that are easy to mix up. Final evaluation return is the strict end-of-training result, best evaluation return tells whether the method learned a good policy at any point, and the best-final gap measures stability.
+The completed attention section shows that both Transformer policies move away from uniform attention, but the hidden-velocity policy concentrates most strongly on the newest token and still remains low-return. That is useful evidence against treating low entropy as automatically good memory use. The combined POMDP run is stable but low-return, showing that hidden state, noisy observations, and delayed rewards together are substantially harder than the single-stressor settings. The most important reporting lesson is to separate three ideas that are easy to mix up. Final evaluation return is the strict end-of-training result, best evaluation return tells whether the method learned a good policy at any point, and the best-final gap measures stability.
 
 \appendix
 \section{Selected W\&B Runs}
@@ -437,6 +530,8 @@ The combined POMDP run is stable but low-return, showing that hidden state, nois
 \item \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/rvckskwt}{\texttt{rl\_p2\_rlhf\_tr\_seed42}} (run id \texttt{rvckskwt}, 2026-05-28T21:25:25Z; Part 2d, Transformer, Full; final 155.6, best 1035.3, hardware Unknown)
 \item \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/78e2wcm0}{\texttt{rl\_p3\_attn\_support\_full\_seed42}} (run id \texttt{78e2wcm0}, 2026-05-29T07:34:06Z; Part 3, Transformer, Full; final 3321.9, best 3442.7, hardware Tesla T4 x2)
 \item \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/lwsokb8n}{\texttt{rl\_p3\_attn\_support\_hidden\_seed42}} (run id \texttt{lwsokb8n}, 2026-05-29T11:25:30Z; Part 3, Transformer, Hidden velocity; final 293.6, best 745.3, hardware Tesla T4 x2)
+\item Attention-analysis full rerun: \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/jx1lmi8i}{\texttt{rl\_p3\_attn\_support\_full\_seed42}} (run id \texttt{jx1lmi8i}; final 1397.6, best 3390.0, entropy logged across 100 points)
+\item Attention-analysis hidden rerun: \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/lap7edb6}{\texttt{rl\_p3\_attn\_support\_hidden\_seed42}} (run id \texttt{lap7edb6}; final 296.4, best 993.2, entropy logged across 100 points)
 \item Bonus positional learned latest source: \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/jrmialcm}{\texttt{rl\_bonus\_pos\_learned\_stable\_seed42}} (run id \texttt{jrmialcm}; final 727.8, best 862.4)
 \item Bonus positional sinusoidal latest source: \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/ivzdtxwf}{\texttt{rl\_bonus\_pos\_sinusoidal\_stable\_seed42}} (run id \texttt{ivzdtxwf}; final 900.0, best 1567.0)
 \item Bonus positional RoPE latest source: \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/b8n09w71}{\texttt{rl\_bonus\_pos\_rope\_stable\_seed42}} (run id \texttt{b8n09w71}; final 1109.3, best 1266.0)
@@ -449,8 +544,14 @@ The report is backed by CSV exports and generated figures. The most important su
 \begin{itemize}
 \item \path{rl/report/data/clean_rl_required_runs.csv}
 \item \path{rl/report/data/coverage_audit.csv}
-\item \path{rl/report/data/failed_superseded_runs.csv}
 \item \path{rl/report/data/wandb_rl_runs_raw.csv}
+\item \path{rl/report/data/wandb_rl_runs_last3w_nonfailed.csv}
+\item \path{rl/report/tables/rl_attempt_inclusive_last3w_by_name.csv}
+\item \path{rl/report/data/attention_entropy_vs_steps_full_hidden.csv}
+\item \path{rl/report/data/attention_history_summary.csv}
+\item \path{rl/report/data/attention_rollout_summary.csv}
+\item \path{rl/report/data/attention_checkpoint_manifest.csv}
+\item \path{rl/report/tables/rl_attention_completed_summary.csv}
 \item \path{rl/report/data/clean_rl_bonus_runs.csv}
 \item \path{rl/report/tables/rl_bonus_latest_finished_by_exact_name.csv}
 \item \path{rl/report/tables/rl_bonus_same_name_instability.csv}

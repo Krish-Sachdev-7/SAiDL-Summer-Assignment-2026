@@ -1,0 +1,3 @@
+setting,path,experiment_name,agent_type,env_name,seed,total_steps,step,context_length,has_actor,has_context_length
+full,/kaggle/input/datasets/kacsav/rl-output/SAiDL_Assignment/rl/checkpoints/rl_p3_attn_support_full_seed42/final_rl_model.pt,rl_p3_attn_support_full_seed42,transformer,Hopper-v5,42,1000000,1000000,8,True,True
+hidden,/kaggle/input/datasets/kacsav/rl-output/SAiDL_Assignment/rl/final_rl_model.pt,rl_p3_attn_support_hidden_seed42,transformer,Hopper-v5,42,1000000,1000000,8,True,True
