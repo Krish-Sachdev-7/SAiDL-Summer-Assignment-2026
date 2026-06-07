@@ -1,0 +1,5 @@
+Model,Variant,State,Created at,Step,Val loss,Val PPL,Delta PPL vs best required,Usable,Run URL
+Best required result,coreml_p3_alibi_train512,finished,,6000.0,4.074214,58.804232,0.0,True,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/38i0pnm1
+AFT-simple,coreml_bonus_aft_simple_ctx512,finished,2026-05-31T22:47:11Z,12000.0,4.312245929241181,74.60786489810681,15.803632898106812,True,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/os3t4hz5
+AFT-local,coreml_bonus_aft_local_ctx512,finished,2026-05-31T20:15:39Z,12000.0,4.289815497398377,72.95300723822041,14.14877523822041,True,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/88qm7l88
+AFT-full,coreml_bonus_aft_full_ctx512,finished,2026-05-31T20:14:28Z,0.0,,,,False,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/ihhzfgnk

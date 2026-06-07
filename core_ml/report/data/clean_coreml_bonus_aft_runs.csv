@@ -1,0 +1,8 @@
+Model,Variant,State,Created at,Step,Val loss,Val PPL,Run URL,Usable
+AFT-full,coreml_bonus_aft_full_ctx512,failed,2026-05-22T07:25:03Z,,,,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/tofswwk3,False
+AFT-full,coreml_bonus_aft_full_ctx512,failed,2026-05-31T07:52:35Z,12000.0,4.772791838645935,118.24891343812985,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/09775d3q,False
+AFT-full,coreml_bonus_aft_full_ctx512,finished,2026-05-31T20:00:02Z,0.0,,,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/w6izit0v,False
+AFT-full,coreml_bonus_aft_full_ctx512,finished,2026-05-31T20:14:28Z,0.0,,,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/ihhzfgnk,False
+AFT-local,coreml_bonus_aft_local_ctx512,failed,2026-05-31T20:01:10Z,,,,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/66jv8jcx,False
+AFT-local,coreml_bonus_aft_local_ctx512,finished,2026-05-31T20:15:39Z,12000.0,4.289815497398377,72.95300723822041,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/88qm7l88,True
+AFT-simple,coreml_bonus_aft_simple_ctx512,finished,2026-05-31T22:47:11Z,12000.0,4.312245929241181,74.60786489810681,https://wandb.ai/krishsachdev246-bits-pilani/saidl-core-ml/runs/os3t4hz5,True
