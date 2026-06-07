@@ -28,7 +28,7 @@
 \maketitle
 
 \begin{abstract}
-This report studies whether a causal Transformer policy can use short-term temporal memory better than a memoryless MLP policy in online reinforcement learning. I implemented TD3 on Hopper-v5, replaced the actor with a causal Transformer over the last $L$ observation-action pairs, swept $L \in \{4,8,16,32\}$, and then tested both policy classes under hidden velocities, observation noise, delayed rewards, and a learned preference reward model. The final required comparison uses 20 successful W\&B runs created between 2026-05-22T17:30:00+00:00 and 2026-05-29T17:30:00+00:00. The strongest final required run was \texttt{rl\_p1\_mlp\_seed44} with return 3540.2; the strongest required checkpoint was \texttt{rl\_p1\_tr\_L4\_seed42} with return 3596.1 at step 680000. I also report the finished bonus runs available in the current W\&B export: hidden-velocity positional ablations with a history-conditioned critic and a combined hidden-velocity/noise/delayed-reward POMDP. The best bonus final return is RoPE with the history-conditioned critic (1109.3), while sinusoidal encoding has the highest bonus peak (1567.0) but a larger best-final gap. Empirically, Transformer memory can help in delayed-reward and full-observation settings, and the bonus runs show that critic conditioning matters substantially under hidden velocity, but several curves still show late deterioration after an earlier good policy.
+This report studies whether a causal Transformer policy can use short-term temporal memory better than a memoryless MLP policy in online reinforcement learning. I implemented TD3 on Hopper-v5, replaced the actor with a causal Transformer over the last $L$ observation-action pairs, swept $L \in \{4,8,16,32\}$, and then tested both policy classes under hidden velocities, observation noise, delayed rewards, and a learned preference reward model. The final required comparison uses 20 successful W\&B runs created between 2026-05-22T17:30:00+00:00 and 2026-05-29T17:30:00+00:00. The strongest final "required" run was \texttt{rl\_p1\_mlp\_seed44} with return 3540.2; the strongest "required" checkpoint was \texttt{rl\_p1\_tr\_L4\_seed42} with return 3596.1 at step 680000. I also report the finished bonus runs available in the current W\&B export: hidden-velocity positional ablations with a history-conditioned critic and a combined hidden-velocity/noise/delayed-reward POMDP. The best bonus final return is RoPE with the history-conditioned critic (1109.3), while sinusoidal encoding has the highest bonus peak (1567.0) but a larger best-final gap. Empirically, Transformer memory can help in delayed-reward and full-observation settings, and the bonus runs show that critic conditioning matters substantially under hidden velocity, but several curves still show late deterioration after an earlier good policy.
 \end{abstract}
 
 \section{Task Requirements and Scope}
@@ -52,8 +52,8 @@ Transformer TD3, L sweep & Complete & L=4,8,16,32 final runs \\
 Hidden velocities & Complete & MLP and Transformer runs \\
 Observation noise & Complete & sigma=0.1 and sigma=0.3, both agents \\
 Delayed rewards & Complete & K=10 and K=30, both agents \\
-RLHF-style learned reward & Complete & rl\_p2\_rlhf\_tr\_seed42 plus reward-model loss \\
-Attention analysis & Partially measured & Full and hidden support runs completed; supplemental full-observation rerun \texttt{jx1lmi8i} logs attention entropy and lag weights over training \\
+RLHF-style learned reward & Complete with caveat & rl\_p2\_rlhf\_tr\_seed42 plus reward-model loss; contamination caveat discussed below \\
+Attention analysis & Deferred in this compile & Full attention-analysis write-up left for a later report pass after the new rollout artifacts are integrated \\
 Bonus positional encoding ablation & Complete supplemental evidence & Latest finished learned/sinusoidal/RoPE hidden-velocity runs use the history-conditioned critic \\
 Bonus combined POMDP & Complete supplemental evidence & \texttt{rl\_bonus\_combined\_L32\_stable\_seed42}, hidden velocity + noise 0.1 + delay K=10 \\
 Bonus Algorithm Distillation & Not counted & No finished AD metric row in the current W\&B export \\
@@ -65,7 +65,7 @@ Bonus xLSTM policy & Not counted & No finished xLSTM metric row in the current W
 
 \subsection{Data Provenance}
 
-The scalar results come from the W\&B project \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl}{saidl-rl}. The repository keeps the final report source, compiled PDF, and figures used for the analysis. The supplemental attention-entropy history from run \texttt{jx1lmi8i} is exported in \path{rl/report/data/attention_entropy_full_seed42_jx1lmi8i.csv}. Bonus evidence is exported separately under \path{rl/report/data/clean_rl_bonus_runs.csv} and \path{rl/report/tables}, including the exact-name latest-finished selection and the same-name instability comparison.
+The scalar results come from the W\&B project \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl}{saidl-rl}. The repository keeps the final report source, compiled PDF, and figures used for the analysis. Bonus evidence is exported separately under \path{rl/report/data/clean_rl_bonus_runs.csv} and \path{rl/report/tables}, including the exact-name latest-finished selection and the same-name instability comparison.
 
 \section{Method}
 
@@ -83,7 +83,7 @@ The full-observation baseline uses Hopper-v5. Hidden-velocity experiments remove
 
 \subsection{Learned Reward Model}
 
-For the RLHF-style run, trajectory segment pairs are sampled from replay. Labels are generated from ground-truth segment returns, and a Bradley-Terry objective trains a learned reward model. TD3 then stores learned reward predictions instead of environment rewards after the initial exploration phase. Ground-truth returns are used for preference labels and evaluation, not as the direct training reward in the learned-reward run.
+For the RLHF-style run, trajectory segment pairs are sampled from replay. Labels are generated from ground-truth segment returns, and a Bradley-Terry objective trains a learned reward model. TD3 then stores learned reward predictions instead of environment rewards after the initial exploration phase. Ground-truth returns are used for preference labels and evaluation only.
 
 \subsection{Evaluation Protocol}
 
@@ -91,13 +91,13 @@ Each run trains to 1,000,000 environment steps, evaluates every 10,000 steps, an
 
 \subsection{Bonus Stability Variant}
 
-The later bonus reruns kept the Transformer actor but changed the critic-side information available during updates. Earlier positional-encoding bonus runs used a flat critic over the current transition, while the stabilized bonus runs logged \texttt{critic\_sequence\_context=1.0}, meaning the critic update used history-conditioned inputs aligned with the actor's temporal context. These runs also logged target-Q scale, target-Q clipping fraction, Q-gap diagnostics, and critic losses. The report therefore compares the newest finished stabilized run for each exact experiment name against older finished attempts of the same name where such attempts exist.
+The later bonus reruns kept the Transformer actor but changed the critic-side information available during updates. Earlier positional-encoding bonus runs used a flat critic over the current transition, while the stabilized bonus runs logged \texttt{critic\_sequence\_context=1.0}, meaning the critic update used history-conditioned inputs aligned with the actor's temporal context. These runs also logged target-Q scale, target-Q clipping fraction, Q-gap diagnostics, and critic losses (the additions were made in an attempt to combat late-run instability). The report therefore compares the newest finished stabilized run for each exact experiment name against older finished attempts of the same name where such attempts exist.
 
 \section{Execution Notes and Roadblocks}
 
 The final execution was done on Kaggle with W\&B logging, with initial runs on a P100. Later GPU allocation constraints forced me to switch to running on 2xT4. This affects wall-clock runtime and throughput comparisons, but not the meaning of evaluation returns when code, seed, total steps, checkpoints, and configs are otherwise matched. Consequently, hardware labels are shown in the tables.
 
-A separate resume issue appeared when a checkpoint saved from a T4 session was resumed on a P100 runtime. The failure was an \texttt{IndexError} inside \texttt{torch.cuda.set\_rng\_state\_all}, caused by restoring CUDA RNG states saved for a different GPU count/layout than the current runtime. The practical fix during the run window was to continue the final suite on T4, matching the saved checkpoint environment. The final repository also guards CUDA RNG restoration by restoring only the first \texttt{torch.cuda.device\_count()} saved CUDA RNG states. This makes cross-layout continuation safer, although exact bitwise reproducibility is still not a meaningful promise after changing GPU layout.
+A separate resume issue appeared when a checkpoint saved from a T4 session was resumed on a P100 runtime. The failure was an \texttt{IndexError} inside \texttt{torch.cuda.set\_rng\_state\_all}, caused by restoring CUDA RNG states saved for a different GPU count/layout than the current runtime (because of the way I'd patched checkpoint saves). The fix I came up with during the run window was to continue the final suite on T4, matching the saved checkpoint environment. The final repository also guards CUDA RNG restoration by restoring only the first \texttt{torch.cuda.device\_count()} saved CUDA RNG states. This makes cross-layout continuation safer, although exact bitwise reproducibility is still not a meaningful promise after changing GPU layout.
 
 Several intermediate runs also crashed or failed because of runtime limits or resume mismatches. They are documented in Table~\ref{tab:failed-attempts}, but the comparisons use the later successful run for the same experiment.
 
@@ -117,7 +117,7 @@ Issue & Diagnosis & Resolution and final status \\
 \midrule
 P100 queue and hardware switch & A runner notebook remained queued for roughly two hours on P100, while T4 allocation became available. This changed wall-clock runtime conditions but did not change the mathematical RL objective. & The final suite records hardware per run. Evaluation-return comparisons are kept separate from runtime-throughput comparisons, and T4/P100 runtime differences are treated as execution caveats rather than algorithmic evidence. \\
 Cross-GPU checkpoint resume failure & T4 checkpoints could save CUDA RNG state for a different GPU layout than the later P100 runtime. Restoring all saved states produced an \texttt{IndexError}. & During execution, affected runs were resumed on matching T4 hardware. In the final code, CUDA RNG restoration is bounded by the current \texttt{torch.cuda.device\_count()}, so extra saved RNG states are ignored instead of crashing resume. \\
-Attention runner config error & The attention rerun initially read \texttt{cfg.agent.context\_length}; the actual Transformer config stores this value under \texttt{cfg.agent.actor.context\_length}. Hydra struct mode therefore raised \texttt{ConfigAttributeError}. & The attention analysis path was revised to read the actor context length. A later full-observation rerun logged entropy and lag summaries to W\&B; the hidden-velocity entropy comparison is still kept separate because the matching hidden run is not yet available with the same logging. \\
+Attention runner config error & The attention rerun initially read \texttt{cfg.agent.context\_length}; the actual Transformer config stores this value under \texttt{cfg.agent.actor.context\_length}. Hydra struct mode therefore raised \texttt{ConfigAttributeError}. & The attention analysis path was revised to read the actor context length. The quantitative attention-analysis section is intentionally deferred in this compile and will be integrated after the new rollout artifacts are ready. \\
 Failed and crashed duplicate runs & Several runs failed from runtime limits, resume mismatches, or notebook interruptions, but later runs with the same experiment name succeeded. Including both would double-count experiments and distort averages. & Failed/crashed attempts are listed only in Table~\ref{tab:failed-attempts}. Main comparisons use the successful final-tagged run for each required experiment. \\
 Learned-reward ambiguity & The intended RLHF setup labels preference pairs using ground-truth segment returns. On code review, later replay entries can contain learned reward predictions, making later reward-model updates susceptible to self-reinforcing reward-model error. & The learned-reward result is reported as an implementation-level learned-reward baseline, not as a clean general claim about RLHF. The large gap versus ground-truth reward is interpreted with this caveat. \\
 Best return much higher than final return & Many runs reached a strong policy before later deterioration. Reporting only final returns would hide learned capability; reporting only best returns would hide instability. & The report keeps both values. Final return is the strict end-of-run metric, best return measures peak learned performance, and the best-final gap is used as a stability diagnostic. \\
@@ -194,7 +194,7 @@ rl\_p3\_attn\_support\_full\_seed42 & crashed & 430000 & 3343.9 & Tesla T4 x2 & 
 
 \subsection{Part 1: Baseline Seeds and Context-Length Sweep}
 
-The three MLP baseline seeds had mean final return 1969.5 with standard deviation 1372.0. This variance is large enough that single-seed conclusions would be weak; seed 44 is much stronger than seeds 42 and 43. The full-observation Transformer sweep is competitive, and shorter memory is not obviously worse here. In fact, the best final result among the sweep is selected by the data. Large $L$ is not a guaranteed improvement.
+The three MLP baseline seeds had mean final return 1969.5 with standard deviation 1372.0. Seed 44 seems much stronger than seeds 42 and 43. The full-observation Transformer sweep is competitive, and shorter memory is not obviously worse here. In fact, the best final result among the sweep is selected by the data. Large $L$ is not a guaranteed improvement.
 
 \begin{table}[!htbp]
 \centering
@@ -239,7 +239,7 @@ Context L & Final return & Best return & Best step & Best-final gap & Hardware &
 
 \subsection{Part 2: Partial Observability}
 
-The partial-observability results are not a simple Transformer-win story. Under hidden velocities, the final Transformer run is -65.1 return points relative to the MLP run, which means memory did not reliably convert the available position history into a better final controller in this execution. Under delayed rewards, the $K=10$ setting is strong for both agents, with the Transformer differing from the MLP by -53.1 final-return points. For $K=30$, both policies are much weaker, and the Transformer is only moderately better than the MLP. Noisy observations remain difficult for both models, especially compared with full-observation Hopper.
+Under hidden velocities, the final Transformer run is -65.1 return points relative to the MLP run, which means memory did not reliably convert the available position history into a better final controller in this execution. Under delayed rewards, the $K=10$ setting is strong for both agents, with the Transformer differing from the MLP by -53.1 final-return points. For $K=30$, both policies are much weaker, and the Transformer is only moderately better than the MLP. Noisy observations remain difficult for both models, especially compared with full-observation Hopper.
 
 \begin{table}[!htbp]
 \centering
@@ -289,75 +289,20 @@ Attention-support full repeat & 3321.9 & 155.6 & 3166.4 & 3442.7 & 1035.3 & 0.18
 }
 \end{table}
 
-\subsection{Attention Analysis Support Runs}
+\subsubsection{Contamination and Consequences}
+Per the assignment, preference labels should be generated from ground-truth segment returns, while TD3 training should use the learned reward model as the substitute reward. In my implementation, the replay buffer stored the reward value used for TD3 updates. After warm-up, that value could be the learned reward prediction rather than the true environment reward. As a result, later preference-pair labels could be computed from replay rewards that already contain the model's own earlier predictions.
 
-The repository includes rollout and attribution utilities for raw attention and Chefer-style relevance propagation. The Chefer-style code path is implemented as an attribution helper, but I do not treat it as a completed quantitative result here because the new W\&B evidence logs raw attention summaries rather than gradient-relevance matrices. The part of the assignment directly addressed by the new run is Section 3, Attention Analysis: attention entropy versus training steps, plus mean attention over the context window for the fully observable Transformer.
+This matters because it weakens the interpretation of the RLHF comparison. The learned-reward run still tests an implementation-level learned-reward pipeline, but it is not a clean Christiano-style comparison in which ground-truth returns are used only for labels and never replaced inside the labeling source. The likely consequence is self-reinforcing reward-model error. If the reward model mis-ranks local state-action decisions early, later preference updates may partially train on those distorted rewards, amplify critic error, and push the actor toward behavior that looks good to the learned model but not to Hopper's true return.
 
-The original final-tagged support runs remain the main policy-quality comparison for full observation versus hidden velocity. A later supplemental run, \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/jx1lmi8i}{\texttt{rl\_p3\_attn\_support\_full\_seed42}} (\texttt{jx1lmi8i}), adds the missing attention scalars for the full-observation side. It logged 100 entropy points from 10k to 1M environment steps. Entropy decreased from 2.075 at the first evaluation to 1.531 at the final evaluation, with a minimum of 1.446 and mean of 1.556 across the run. This means the policy's attention became more concentrated over training rather than remaining close to a uniform distribution over the eight-token context. The largest average and final lag weight was \texttt{lag\_0}, so the trained policy still relied most heavily on the most recent token even though the final effective context estimate was 4.62 tokens. The same run reached best return 3390.0 at step 990k but ended at 1397.6, which is another example of late deterioration after learning a substantially stronger policy.
-
-\begin{table}[!htbp]
-\centering
-\small
-\caption{Support runs for the attention-analysis setting.}
-\label{tab:attention-support}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{llrrrl}
-\toprule
-Run & Observation setting & Final return & Best return & Best step & Hardware \\
-\midrule
-p3 attn full s42 & Full & 3321.9 & 3442.7 & 920000 & Tesla T4 x2 \\
-p3 attn hidden s42 & Hidden velocity & 293.6 & 745.3 & 340000 & Tesla T4 x2 \\
-\bottomrule
-\end{tabular}
-}
-\end{table}
-
-\begin{figure}[!htbp]
-\centering
-\includegraphics[width=0.88\textwidth]{figures/fig_attention_support_returns.png}
-\caption{Learning curves for the completed Transformer support runs used for attention analysis.}
-\label{fig:attention-support}
-\end{figure}
-
-\begin{table}[!htbp]
-\centering
-\small
-\caption{Supplemental full-observation run with attention entropy logging.}
-\label{tab:attention-entropy-full}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{llrrrrrr}
-\toprule
-Run & Setting & Logged points & Step range & Final return & Best return & Entropy first/final & Final effective context \\
-\midrule
-\texttt{jx1lmi8i} & Full & 100 & 10k--1M & 1397.6 & 3390.0 @ 990k & 2.075 / 1.531 & 4.62 \\
-\bottomrule
-\end{tabular}
-}
-\end{table}
-
-\begin{figure}[!htbp]
-\centering
-\includegraphics[width=0.88\textwidth]{figures/fig_attention_entropy_full_seed42.png}
-\caption{Attention entropy over training steps for the supplemental full-observation Transformer run. The same plot overlays evaluation return to show that attention concentration and policy quality are related but not identical diagnostics.}
-\label{fig:attention-entropy-full}
-\end{figure}
-
-\begin{figure}[!htbp]
-\centering
-\includegraphics[width=0.78\textwidth]{figures/fig_attention_lag_weights_full_seed42.png}
-\caption{Mean attention weight by lag for the supplemental full-observation run. Both the training mean and final evaluation place the largest mass on the most recent token, while still assigning measurable mass across the context window.}
-\label{fig:attention-lag-full}
-\end{figure}
-
-This evidence completes the full-observation half of the entropy-vs-training-steps analysis. It does not complete the requested fully observable versus hidden-velocity attention comparison, because the matching hidden-velocity rerun with \texttt{attention/entropy\_mean} and lag-weight logging is not present in the exported W\&B history at the time of writing. Therefore I report the full-observation entropy result as a measured analysis artifact and leave the hidden-velocity comparison as pending rather than extrapolating from the older hidden support run.
+Therefore, I reported the gap in metrics with this caveat. The RLHF run ends at 155.6 final return and peaks at 1035.3, far below the L=8 ground-truth Transformer baseline, which ends at 1778.8 and peaks at 3377.4. A clean rerun would be the better evidence, but the finished RLHF run took 22,043 seconds, or 6.12 hours, and the L=8 ground-truth baseline took 20,459 seconds, or 5.68 hours. Given that this problem was discovered late, I was unable to provide a clean re-run.
 
 \section{Bonus RL Experiments}
 
-The bonus runs address three additional questions from the assignment PDF: positional encodings under hidden velocity, a combined POMDP stressor, and sequence-model policy alternatives such as Algorithm Distillation or xLSTM. The finished evidence at the time of export covers the positional-encoding ablation and the combined POMDP. I do not count AD or xLSTM because no finished metric row for those experiments is present in the current W\&B export. This boundary is important; a running or failed notebook cell is not enough evidence for a report metric.
+The bonus runs address three additional questions from the assignment PDF: positional encodings under hidden velocity, a combined POMDP stressor, and sequence-model policy alternatives such as Algorithm Distillation or xLSTM. The finished evidence at the time of export covers the positional-encoding ablation and the combined POMDP. I do not count AD or xLSTM because no finished metric row for those experiments is present in the current W\&B export (the runs could not be finished on time).
 
 \subsection{Hidden-Velocity Positional Encoding Ablation}
 
-The positional bonus experiments are the strongest new evidence from the bonus suite. The first set of finished positional runs used the earlier flat-critic setup and all ended in a narrow low-return band: learned absolute positions finished at 252.3, sinusoidal at 249.8, and RoPE at 248.0. Later stability-tagged flat-critic reruns did not materially improve the final returns for learned or sinusoidal encodings, although they did reveal high transient peaks. The latest finished stabilized runs change the result because the critic is history-conditioned. Learned absolute positions rise to 727.8 final return, sinusoidal rises to 900.0, and RoPE reaches 1109.3.
+The first set of finished positional runs used the earlier flat-critic setup and all ended in a narrow low-return band: learned absolute positions finished at 252.3, sinusoidal at 249.8, and RoPE at 248.0. Later stability-tagged (minor stability improvements made) flat-critic reruns did not materially improve the final returns for learned or sinusoidal encodings, although they did reveal high transient peaks. The latest finished stabilized runs change the result because the critic is history-conditioned. Learned absolute positions rise to 727.8 final return, sinusoidal rises to 900.0, and RoPE reaches 1109.3.
 
 \begin{table}[!htbp]
 \centering
@@ -384,10 +329,9 @@ RoPE & earlier RoPE flat run, \texttt{ok1zy14g} & 248.0 & 248.0 & 0.0 & 1109.3 &
 \label{fig:bonus-positional-critic}
 \end{figure}
 
-This comparison changes the interpretation of the earlier bonus results. The pre-stability positional runs were suspiciously similar, clustering around final returns of roughly 250 despite using different positional encodings. That pattern suggested that the bottleneck was not the positional encoding alone. The sequence-critic reruns support that diagnosis: once the critic receives temporal context, the positional variants separate clearly. RoPE is the best final controller, sinusoidal has the highest peak, and learned absolute positions improve but remain the weakest of the three.
+The pre-stability positional runs were suspiciously similar, clustering around final returns of roughly 250 despite using different positional encodings. That pattern suggested that the bottleneck could not have been the positional encoding alone, and once the critic receives temporal context, the positional variants separate clearly. RoPE is the best final controller, sinusoidal has the highest peak, and learned absolute positions improve but remain the weakest of the three.
 
-The comparison against the required hidden-velocity runs is also informative. The required hidden-velocity Transformer ends at 253.0 with best return 986.3, while the required hidden-velocity MLP ends at 318.1 with best return 999.1. The latest bonus RoPE run exceeds both required hidden-velocity final returns and also exceeds their best returns. Sinusoidal and learned absolute positions also beat the required hidden-velocity final returns, although learned does not beat the required best checkpoints. This points to the critic change as a real stability and credit-assignment improvement, not just noise from one lucky evaluation.
-
+The required hidden-velocity Transformer ends at 253.0 with best return 986.3, while the required hidden-velocity MLP ends at 318.1 with best return 999.1. The latest bonus RoPE run exceeds both required hidden-velocity final returns and also exceeds their best returns. Sinusoidal and learned absolute positions also beat the required hidden-velocity final returns, although learned does not beat the required best checkpoints.
 \subsection{Combined POMDP}
 
 The combined POMDP run applies hidden velocities, observation noise with $\sigma=0.1$, and delayed rewards with $K=10$ in the same Hopper task. The newest finished run, \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/86ypnkri}{run \texttt{86ypnkri}}, reaches final return 213.2 and best return 251.6 at step 975k. Its best-final gap is only -38.4, so the run is relatively stable, but the absolute policy quality is low.
@@ -411,11 +355,11 @@ Combined hidden + noise + delay, L=32 & 213.2 & 251.6 & 975000 & -38.4 \\
 }
 \end{table}
 
-The combined result shows an unfavorable interaction between the stressors. Delay $K=10$ alone remains a high-return task for both the MLP and Transformer required runs. Once hidden velocities and noise are added, the combined task drops below the individual hidden-velocity and noisy-observation Transformer finals. The policy remains relatively stable, yet never reaches the high-return regime. This is the cleanest bonus evidence that simultaneous partial observability and reward-delay pressure are much harder than any single wrapper tested in the required suite.
+This result is likely due to unfavorable interaction between the stressors. Delay $K=10$ alone is a high-return task for both the MLP and Transformer required runs. Once hidden velocities and noise are added, the combined task drops below the individual hidden-velocity and noisy-observation Transformer finals. The policy remains relatively stable but never reaches high-returns. Evidence points to simultaneous partial observability and reward-delay pressure being much harder than any single variant tested in the required suite.
 
 \subsection{Algorithm Distillation and xLSTM Boundary}
 
-Algorithm Distillation and xLSTM remain implementation targets rather than finished empirical claims in this export. The report includes their code and notebook support in the repository, but without a finished W\&B metric row I do not place them in the quantitative comparison. That choice is conservative: the assignment bonus asks for comparative evidence, and a partial or running job does not answer the comparison yet.
+Algorithm Distillation and xLSTM remain implementation targets that could not be cleanly finished within the timeframe. The report includes their code and notebook support in the repository, but without a finished W\&B metric row I do not place them in the quantitative comparison. 
 
 \begin{figure}[!htbp]
 \centering
@@ -426,11 +370,11 @@ Algorithm Distillation and xLSTM remain implementation targets rather than finis
 
 \section{Stability, Undertraining, and Checkpoint Choice}
 
-The finished required suite does not mainly look undertrained. Most runs reached the requested one million steps, and many had their best checkpoint before the last evaluation. The stronger concern is instability after learning: 8 selected required runs are flagged by the conservative late-deterioration threshold, with the clearest cases being p1 mlp s42, p1 mlp s43, p1 tr L8 s42, p2 hidden mlp s42, p2 hidden tr s42, p2 delay 30 mlp s42, p2 rlhf tr s42, p3 attn hidden s42. The bonus positional runs sharpen the same point. Sinusoidal with the history-conditioned critic reaches a very strong best return of 1567.0 but ends at 900.0, while RoPE has a lower peak than sinusoidal but the best final return and a much smaller collapse gap. This is why the report keeps final and best returns separate.
+A major concern I faced was instability after learning: 8 selected required runs are flagged by a conservative late-deterioration threshold, with the clearest cases being p1 mlp s42, p1 mlp s43, p1 tr L8 s42, p2 hidden mlp s42, p2 hidden tr s42, p2 delay 30 mlp s42, p2 rlhf tr s42, p3 attn hidden s42. The bonus positional runs sharpen the same point. Sinusoidal with the history-conditioned critic reaches a very strong best return of 1567.0 but ends at 900.0, while RoPE has a lower peak than sinusoidal but the best final return and a much smaller collapse gap. This is why the report keeps final and best returns separate.
 
-The likely culprits are standard off-policy actor-critic failure modes: critic drift, extrapolation error from replay, bootstrapping noise, actor updates exploiting Q-function mistakes, and distribution shift as the learned policy changes. The POMDP wrappers add extra stress because noisy, delayed, or incomplete observations weaken the Markov assumption. Transformer policies add another sensitivity source: attention over a short history can help, but it also gives the actor a larger function class that may overfit critic errors.
+The likely culprits I found were characterized as "standard off-policy" actor-critic failures in other research: critic drift, extrapolation error from replay, bootstrapping noise, actor updates exploiting Q-function mistakes, and distribution shift as the learned policy changes. The POMDP wrappers may have added extra stress because noisy, delayed, or incomplete observations weaken the Markov assumption. Transformer policies added sensitivity in my opinion, I figure attention may give the actor a larger function class that may overfit critic errors.
 
-Practical remedies are straightforward; save and report best-evaluation checkpoints in addition to final checkpoints, early-stop or select by validation return when compute is limited, run more seeds for high-variance settings, tune actor and critic learning rates separately, monitor Q-value scale and critic losses, increase evaluation frequency near peaks, and make target-policy updates more conservative in unstable settings. For this assignment I elected to report final return for strict end-of-run comparison, best return for learned capability, and the gap as a measure of run stability.
+Practical remedies I found for these were save and report best-evaluation checkpoints in addition to final checkpoints, early-stop or select by validation return when compute is limited, run more seeds for high-variance settings, tune actor and critic learning rates separately, monitor Q-value scale and critic losses, increase evaluation frequency near peaks, and make target-policy updates more conservative in unstable settings. For this report I elected to report final return for strict end-of-run comparison, best return for learned capability, and the gap as a measure of run stability.
 
 \begin{figure}[!htbp]
 \centering
@@ -446,9 +390,15 @@ Practical remedies are straightforward; save and report best-evaluation checkpoi
 \label{fig:stability-gap}
 \end{figure}
 
+\section{Practical Implications}
+
+The main practical implication is that memory in the actor is useful only when the rest of the actor-critic system can use it reliably. The Transformer actor is competitive in full observation and delayed reward settings, but hidden velocity and noisy observation settings show deterioration. Temporal context alone may not guarantee a better final controller. For the bonus runs, once the critic is also history-conditioned, the hidden-velocity positional runs improve substantially and the positional encodings separate more clearly. This suggests that sequence actors and memoryless critics can create an information mismatch in POMDP-style settings.
+
+For applied RL, instability is concerning. A controller that reaches a good checkpoint and later deteriorates would be risky in a real deployment unless checkpoints are selected by evaluation return, monitored continuously, and protected against critic drift. It's also crucial to note learned-reward systems must keep the ground-truth labeling source separate from learned rewards, otherwise preference learning can become self-referential and the comparison is no longer faithful.
+
 \section{Hardware and Runtime Caveat}
 
-The final suite used both P100 and T4 hardware because of issues with Kaggle availability. Runtime therefore should not be read as an architecture-speed benchmark. T4 and P100 differ in GPU generation, available kernels, and, in this Kaggle setup, GPU count. The evaluation returns remain meaningful for algorithmic comparison because the environment, seeds, step budget, and training commands are the quantities that define the RL experiment, but hardware labels must travel with any wall-clock statement.
+The final suite used both P100 and T4 hardware because of issues with Kaggle availability. Runtime therefore should not be read as an architecture-speed benchmark. T4 and P100 differ in GPU generation, available kernels, and, in this Kaggle setup, GPU count. The evaluation returns remain meaningful for algorithmic comparison because the environment, seeds, step budget, and training commands are the quantities that define the RL experiment.
 
 \begin{figure}[!htbp]
 \centering
@@ -459,9 +409,9 @@ The final suite used both P100 and T4 hardware because of issues with Kaggle ava
 
 \section{Conclusion}
 
-The required RL suite was completed with all 20 required final-tagged experiments present as successful W\&B runs in the final seven-day window. The strongest required result is that memory-based policies can be competitive and sometimes strong, especially in full-observation and delayed-reward settings. The bonus results add a sharper finding: under hidden velocity, the latest history-conditioned critic runs separate the positional encodings and improve final returns substantially over the earlier flat-critic attempts. RoPE gives the strongest final bonus return, sinusoidal gives the strongest bonus peak, and learned absolute positions improve but remain behind both.
+The required RL suite was completed with all 20 required final-tagged experiments present as successful W\&B runs. The strongest required result is that memory-based policies can be competitive and sometimes strong, especially in full-observation and delayed-reward settings. Under hidden velocity, the latest history-conditioned critic runs separate the positional encodings and improve final returns substantially over the earlier flat-critic attempts. RoPE gives the strongest final bonus return, sinusoidal gives the strongest bonus peak, and learned absolute positions improve but remain behind both.
 
-The combined POMDP run is stable but low-return, showing that hidden state, noisy observations, and delayed rewards together are substantially harder than the single-stressor settings. AD and xLSTM are not counted as finished empirical comparisons because the current export has no finished metric rows for them. The most important reporting lesson is to separate three ideas that are easy to mix up. Final evaluation return is the strict end-of-training result, best evaluation return tells whether the method learned a good policy at any point, and the best-final gap measures stability. In this suite, the evidence points more toward instability and late deterioration than simple undertraining.
+The combined POMDP run is stable but low-return, showing that hidden state, noisy observations, and delayed rewards together are substantially harder than the single-stressor settings. The most important reporting lesson is to separate three ideas that are easy to mix up. Final evaluation return is the strict end-of-training result, best evaluation return tells whether the method learned a good policy at any point, and the best-final gap measures stability.
 
 \appendix
 \section{Selected W\&B Runs}
@@ -487,7 +437,6 @@ The combined POMDP run is stable but low-return, showing that hidden state, nois
 \item \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/rvckskwt}{\texttt{rl\_p2\_rlhf\_tr\_seed42}} (run id \texttt{rvckskwt}, 2026-05-28T21:25:25Z; Part 2d, Transformer, Full; final 155.6, best 1035.3, hardware Unknown)
 \item \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/78e2wcm0}{\texttt{rl\_p3\_attn\_support\_full\_seed42}} (run id \texttt{78e2wcm0}, 2026-05-29T07:34:06Z; Part 3, Transformer, Full; final 3321.9, best 3442.7, hardware Tesla T4 x2)
 \item \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/lwsokb8n}{\texttt{rl\_p3\_attn\_support\_hidden\_seed42}} (run id \texttt{lwsokb8n}, 2026-05-29T11:25:30Z; Part 3, Transformer, Hidden velocity; final 293.6, best 745.3, hardware Tesla T4 x2)
-\item Supplemental attention-entropy source: \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/jx1lmi8i}{run \texttt{jx1lmi8i}} (2026-05-30T09:14:35Z; Part 3 full-observation entropy rerun; final 1397.6, best 3390.0, 100 logged entropy points)
 \item Bonus positional learned latest source: \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/jrmialcm}{\texttt{rl\_bonus\_pos\_learned\_stable\_seed42}} (run id \texttt{jrmialcm}; final 727.8, best 862.4)
 \item Bonus positional sinusoidal latest source: \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/ivzdtxwf}{\texttt{rl\_bonus\_pos\_sinusoidal\_stable\_seed42}} (run id \texttt{ivzdtxwf}; final 900.0, best 1567.0)
 \item Bonus positional RoPE latest source: \href{https://wandb.ai/krishsachdev246-bits-pilani/saidl-rl/runs/b8n09w71}{\texttt{rl\_bonus\_pos\_rope\_stable\_seed42}} (run id \texttt{b8n09w71}; final 1109.3, best 1266.0)
